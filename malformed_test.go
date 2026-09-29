@@ -167,7 +167,7 @@ func TestMetadataShapes(t *testing.T) {
 	sign := func(body string) []byte {
 		doc := `<md:EntitiesDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:shibmd="urn:mace:shibboleth:metadata:1.0" xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui" xmlns:mdattr="urn:oasis:names:tc:SAML:metadata:attribute" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" ID="_md" ` + body
 		in := w.file("md.xml", strings.Replace(doc, "<!--SIG-->", sprintf(sigTemplate, rsaSHA256, "_md", dSHA256), 1))
-		return w.run("--sign", "--lax-key-search", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
+		return w.run("--sign", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
 			"--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:metadata:EntitiesDescriptor", "--output", "/dev/stdout", in)
 	}
 	idp := func(id, extra string) string {

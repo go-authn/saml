@@ -37,6 +37,11 @@ const (
 
 var judgeNow = time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
 
+// laxKeySearch is "--lax-key-search" where xmlsec1 has it (1.3 and later, which
+// otherwise looks keys up by the template's empty KeyInfo and finds none),
+// and nothing on 1.2, which Ubuntu ships and which does not know the flag.
+var laxKeySearch []string
+
 func xmlsec(t *testing.T) string {
 	t.Helper()
 	p, err := exec.LookPath("xmlsec1")
@@ -45,6 +50,12 @@ func xmlsec(t *testing.T) string {
 			t.Fatal("xmlsec1 is required here and is not installed")
 		}
 		t.Skip("xmlsec1 is not installed")
+	}
+	if laxKeySearch == nil {
+		laxKeySearch = []string{}
+		if out, _ := exec.Command(p, "--help-sign").CombinedOutput(); strings.Contains(string(out), "--lax-key-search") {
+			laxKeySearch = []string{"--lax-key-search"}
+		}
 	}
 	return p
 }
@@ -205,6 +216,7 @@ const oaepMGF1PTransport = `<xenc:EncryptionMethod Algorithm="http://www.w3.org/
 
 func (w *world) run(args ...string) []byte {
 	w.t.Helper()
+	args = append(append([]string{args[0]}, laxKeySearch...), args[1:]...)
 	out, err := exec.Command(w.xmlsec, args...).CombinedOutput()
 	if err != nil {
 		w.t.Fatalf("xmlsec1 %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -244,7 +256,7 @@ func (w *world) build(a assertion, r response) string {
 	ax := a.xml(r.signAssertion)
 	if r.signAssertion {
 		in := w.file("assertion.xml", ax)
-		ax = string(w.run("--sign", "--lax-key-search", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
+		ax = string(w.run("--sign", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
 			"--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:assertion:Assertion", "--output", "/dev/stdout", in))
 		ax = stripDecl(ax)
 	}
@@ -268,7 +280,7 @@ func (w *world) build(a assertion, r response) string {
 			"http://www.w3.org/2009/xmlenc11#aes256-gcm":  "aes-256",
 		}[r.encrypt]
 		data := w.file("to-encrypt.xml", `<saml:EncryptedAssertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">`+ax+`</saml:EncryptedAssertion>`)
-		body = stripDecl(string(w.run("--encrypt", "--lax-key-search", "--pubkey-cert-pem", w.sp.certFile, "--session-key", size,
+		body = stripDecl(string(w.run("--encrypt", "--pubkey-cert-pem", w.sp.certFile, "--session-key", size,
 			"--xml-data", data, "--node-name", "urn:oasis:names:tc:SAML:2.0:assertion:Assertion", "--output", "/dev/stdout", tmpl)))
 	}
 
@@ -282,7 +294,7 @@ func (w *world) build(a assertion, r response) string {
 		judgeNow.Format(time.RFC3339), r.destination, r.inResponseTo, a.Issuer, sig, r.status, body)
 	if r.signResponse {
 		in := w.file("response.xml", resp)
-		resp = string(w.run("--sign", "--lax-key-search", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
+		resp = string(w.run("--sign", "--privkey-pem", w.idp.keyFile+","+w.idp.certFile,
 			"--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:protocol:Response", "--output", "/dev/stdout", in))
 	}
 	if r.tamper != nil {
