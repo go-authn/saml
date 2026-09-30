@@ -123,6 +123,18 @@ func newWorld(t *testing.T) *world {
 }
 
 func (w *world) newSP() *SP {
+	// ⛔ The replay cache gets the SAME frozen clock as the SP. Without it the
+	// SP judges validity at judgeNow while MemoryReplay sweeps against
+	// time.Now, so an assertion whose NotOnOrAfter is judgeNow+5m is stored
+	// with an expiry already in the past and swept on the NEXT call -- before
+	// the lookup that would have caught the replay.
+	//
+	// Not a flake. judgeNow is 2026-09-29 10:00 UTC, so TestReplay passed
+	// until 10:05 UTC that day and could never pass again: green at 08:13,
+	// red the next morning, on a pull request that only bumped
+	// actions/setup-go. 200 runs of it fail on main today, 200 pass with this.
+	replay := NewMemoryReplay()
+	replay.now = func() time.Time { return judgeNow }
 	return &SP{
 		EntityID:   spEntity,
 		ACS:        acsURL,
@@ -130,6 +142,7 @@ func (w *world) newSP() *SP {
 		Cert:       w.sp.cert,
 		Federation: w.fed,
 		Now:        func() time.Time { return judgeNow },
+		Replay:     replay,
 	}
 }
 
