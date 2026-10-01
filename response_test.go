@@ -282,14 +282,14 @@ func TestEncryptedKeysAreCapped(t *testing.T) {
 	// A hundred -- under the size limit: refused, and quickly.
 	w = newWorld(t)
 	r.tamper = before(100)
-	start := time.Now()
-	_, err := w.newSP().Accept(w.build(defaultAssertion(), r), w.pending)
-	took := time.Since(start)
+	built := w.build(defaultAssertion(), r)
+	from := keyUnwraps.Load()
+	_, err := w.newSP().Accept(built, w.pending)
+	unwrapped := keyUnwraps.Load() - from
 	if err == nil || !strings.Contains(err.Error(), "keys for this SP") {
 		t.Fatalf("100 keys: %v", err)
 	}
-	// Four RSA operations at most; 100 take a tenth of a second or more.
-	if took > 50*time.Millisecond {
-		t.Errorf("100 keys took %s to refuse", took)
+	if unwrapped > maxKeyUnwraps {
+		t.Errorf("%d RSA unwraps for one response, want at most %d", unwrapped, maxKeyUnwraps)
 	}
 }

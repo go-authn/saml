@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/beevik/etree"
 )
@@ -161,6 +162,7 @@ func (sp *SP) decrypt(ea *etree.Element, authenticated bool) (*etree.Element, er
 
 // unwrap decrypts one EncryptedKey with RSA-OAEP.
 func (sp *SP) unwrap(ek *etree.Element) ([]byte, error) {
+	keyUnwraps.Add(1)
 	em, err := child(ek, nsXEnc, "EncryptionMethod")
 	if err != nil {
 		return nil, err
@@ -216,3 +218,7 @@ func cipherValue(el *etree.Element) ([]byte, error) {
 
 // maxKeyUnwraps is how many EncryptedKeys addressed to this SP are tried.
 const maxKeyUnwraps = 4
+
+// keyUnwraps counts RSA key unwraps, for the test that holds them to
+// maxKeyUnwraps: a count, where a duration would depend on the machine.
+var keyUnwraps atomic.Int64
