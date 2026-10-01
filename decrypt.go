@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/beevik/etree"
 )
@@ -57,7 +58,7 @@ var _ = []any{sha1.New, sha256.New, sha512.New}
 
 // decrypt opens an EncryptedAssertion and returns the Assertion inside.
 //
-// ⛔ CBC ciphertext is only decrypted when a verified signature covered it.
+// â CBC ciphertext is only decrypted when a verified signature covered it.
 // Unauthenticated CBC is a padding oracle: "XML Encryption is broken"
 // (Jager and Somorovsky, 2011) recovers a plaintext by sending a server
 // variations of the ciphertext and watching which ones it rejects, and an SP
@@ -101,11 +102,22 @@ func (sp *SP) decrypt(ea *etree.Element, authenticated bool) (*etree.Element, er
 	if len(eks) == 0 {
 		return nil, errors.New("the encrypted assertion carries no key")
 	}
+	// ⛔ Each key is an RSA private-key operation, done before any signature
+	// is checked when the response itself is not signed: a response carrying
+	// hundreds of keys made one request cost hundreds of them (measured, 378
+	// keys in 256 KiB: 289 ms of CPU, 250 times a normal one). An IdP sends
+	// one per encryption key of this SP in its metadata -- two across a key
+	// rollover -- so a few are tried and no more.
 	var key []byte
+	tried := 0
 	for _, ek := range eks {
 		if r := ek.SelectAttrValue("Recipient", ""); r != "" && r != sp.EntityID {
 			continue
 		}
+		if tried == maxKeyUnwraps {
+			return nil, fmt.Errorf("more than %d keys for this SP in the encrypted assertion", maxKeyUnwraps)
+		}
+		tried++
 		if k, err := sp.unwrap(ek); err == nil && len(k) == alg.key {
 			key = k
 			break
@@ -150,6 +162,7 @@ func (sp *SP) decrypt(ea *etree.Element, authenticated bool) (*etree.Element, er
 
 // unwrap decrypts one EncryptedKey with RSA-OAEP.
 func (sp *SP) unwrap(ek *etree.Element) ([]byte, error) {
+	keyUnwraps.Add(1)
 	em, err := child(ek, nsXEnc, "EncryptionMethod")
 	if err != nil {
 		return nil, err
@@ -202,3 +215,10 @@ func cipherValue(el *etree.Element) ([]byte, error) {
 	}
 	return base64.StdEncoding.DecodeString(strings.Join(strings.Fields(cv.Text()), ""))
 }
+
+// maxKeyUnwraps is how many EncryptedKeys addressed to this SP are tried.
+const maxKeyUnwraps = 4
+
+// keyUnwraps counts RSA key unwraps, for the test that holds them to
+// maxKeyUnwraps: a count, where a duration would depend on the machine.
+var keyUnwraps atomic.Int64

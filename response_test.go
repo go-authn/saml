@@ -248,3 +248,48 @@ func TestCommentInjectedAfterSigning(t *testing.T) {
 		}
 	}
 }
+
+// ⛔ An unsigned response with many EncryptedKeys: each is an RSA private-key
+// operation before any signature is checked. A few are tried -- an IdP sends
+// one per encryption key of the SP, two across a rollover -- and a response
+// carrying more is refused at once rather than after hundreds of them.
+func TestEncryptedKeysAreCapped(t *testing.T) {
+	ekRe := regexp.MustCompile(`(?s)<xenc:EncryptedKey.*?</xenc:EncryptedKey>`)
+	cvRe := regexp.MustCompile(`(?s)(<xenc:CipherValue>)(.*?)(</xenc:CipherValue>)`)
+	// before puts n keys that open nothing ahead of the real one.
+	before := func(n int) func(string) string {
+		return func(s string) string {
+			real := ekRe.FindString(s)
+			if real == "" {
+				t.Fatal("no EncryptedKey to copy")
+			}
+			bogus := cvRe.ReplaceAllStringFunc(real, func(m string) string {
+				p := cvRe.FindStringSubmatch(m)
+				return p[1] + strings.Repeat("A", len(p[2])) + p[3]
+			})
+			return strings.Replace(s, real, strings.Repeat(bogus, n)+real, 1)
+		}
+	}
+	r := response{signAssertion: true, encrypt: aes256GCM}
+
+	// A rollover's worth, and the real one: accepted.
+	w := newWorld(t)
+	r.tamper = before(maxKeyUnwraps - 1)
+	if _, err := w.newSP().Accept(w.build(defaultAssertion(), r), w.pending); err != nil {
+		t.Fatalf("%d keys that open nothing, then the real one: %v", maxKeyUnwraps-1, err)
+	}
+
+	// A hundred -- under the size limit: refused, and quickly.
+	w = newWorld(t)
+	r.tamper = before(100)
+	built := w.build(defaultAssertion(), r)
+	from := keyUnwraps.Load()
+	_, err := w.newSP().Accept(built, w.pending)
+	unwrapped := keyUnwraps.Load() - from
+	if err == nil || !strings.Contains(err.Error(), "keys for this SP") {
+		t.Fatalf("100 keys: %v", err)
+	}
+	if unwrapped > maxKeyUnwraps {
+		t.Errorf("%d RSA unwraps for one response, want at most %d", unwrapped, maxKeyUnwraps)
+	}
+}
