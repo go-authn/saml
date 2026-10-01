@@ -61,7 +61,7 @@ func TestRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("not raw DEFLATE: %v", err)
 	}
-	r, err := parse(raw)
+	r, err := parse(raw, responseLimits)
 	if err != nil || !is(r, nsProtocol, "AuthnRequest") {
 		t.Fatalf("not an AuthnRequest: %v\n%s", err, raw)
 	}
@@ -107,7 +107,7 @@ func TestSPMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ed, err := parse(out)
+	ed, err := parse(out, responseLimits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestIdPHelpers(t *testing.T) {
 		t.Error("Has")
 	}
 	i.Scopes = []string{"x.fr"}
-	for v, want := range map[string]bool{"a@x.fr": true, "a@X.fr": false, "a@y.fr": false, "@x.fr": false, "a@": false, "ax.fr": false, "a@b@x.fr": true} {
+	for v, want := range map[string]bool{"a@x.fr": true, "a@X.fr": false, "a@y.fr": false, "@x.fr": false, "a@": false, "ax.fr": false, "a@b@x.fr": false} {
 		if i.inScope(v) != want {
 			t.Errorf("inScope(%q) = %v", v, !want)
 		}

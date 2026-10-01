@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +101,10 @@ type Pending struct {
 	IdP          string
 	Issued       time.Time
 	AuthnContext []string
+	// ForceAuthn is whether the request asked the IdP to authenticate the
+	// person again rather than reuse its session: then an AuthnInstant
+	// from before the request is refused, not believed.
+	ForceAuthn bool
 }
 
 // Request builds the URL that sends somebody to idp with an AuthnRequest,
@@ -164,7 +169,7 @@ func (sp *SP) Request(idp *IdP, relayState string, o Options) (string, Pending, 
 		q.Set("RelayState", relayState)
 	}
 	u.RawQuery = q.Encode()
-	return u.String(), Pending{ID: id, IdP: idp.EntityID, Issued: now, AuthnContext: o.AuthnContext}, nil
+	return u.String(), Pending{ID: id, IdP: idp.EntityID, Issued: now, AuthnContext: o.AuthnContext, ForceAuthn: o.ForceAuthn}, nil
 }
 
 // newID is an xs:ID: it must not start with a digit, so it starts with "_".
@@ -212,6 +217,16 @@ const maxResponse = 256 << 10
 // for the server's log, not for the browser.
 func (sp *SP) Accept(samlResponse string, p Pending) (*Assertion, error) {
 	sp.init()
+	// ⛔ A response answers a request. With no request ID, every check that
+	// ties it to one (InResponseTo, the bearer confirmation) compares two
+	// empty strings and passes: an IdP-initiated response, which this
+	// library does not accept -- it is how login CSRF is done.
+	if p.ID == "" {
+		return nil, errors.New("no request to answer: unsolicited responses are refused")
+	}
+	if !p.Issued.IsZero() && sp.Now().Sub(p.Issued) > maxPendingAge {
+		return nil, fmt.Errorf("the request was made more than %s ago", maxPendingAge)
+	}
 	if len(samlResponse) > maxResponse {
 		return nil, errors.New("the response is too large")
 	}
@@ -219,7 +234,7 @@ func (sp *SP) Accept(samlResponse string, p Pending) (*Assertion, error) {
 	if err != nil {
 		return nil, fmt.Errorf("SAMLResponse is not base64: %w", err)
 	}
-	root, err := parse(raw)
+	root, err := parse(raw, responseLimits)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +251,7 @@ func (sp *SP) Accept(samlResponse string, p Pending) (*Assertion, error) {
 		return nil, fmt.Errorf("%s is not in the federation", p.IdP)
 	}
 
-	// ── The response ──────────────────────────────────────────────────
+	// ââ The response ââââââââââââââââââââââââââââââââââââââââââââââââââ
 	resp := root
 	signedResponse := len(children(root, nsDSig, "Signature")) > 0
 	if signedResponse {
@@ -264,8 +279,8 @@ func (sp *SP) Accept(samlResponse string, p Pending) (*Assertion, error) {
 		return nil, err
 	}
 
-	// ── The assertion ─────────────────────────────────────────────────
-	// ⛔ Exactly one. The profile allows several; accepting several is how
+	// ââ The assertion âââââââââââââââââââââââââââââââââââââââââââââââââ
+	// â Exactly one. The profile allows several; accepting several is how
 	// a signed assertion and an unsigned one arrive together and the wrong
 	// one is read (CVE-2022-41912 in crewjam/saml).
 	plain := children(resp, nsAssertion, "Assertion")
@@ -356,7 +371,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 	}
 	skew := sp.ClockSkew
 
-	// ── Subject: a bearer confirmation for this ACS, this request, now ──
+	// ââ Subject: a bearer confirmation for this ACS, this request, now ââ
 	subj, err := child(a, nsAssertion, "Subject")
 	if err != nil {
 		return nil, err
@@ -384,7 +399,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		return nil, errors.New("no bearer confirmation is for this ACS, this request, and now")
 	}
 
-	// ── Conditions ────────────────────────────────────────────────────
+	// ââ Conditions ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 	cond, err := child(a, nsAssertion, "Conditions")
 	if err != nil {
 		return nil, err
@@ -437,7 +452,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		return nil, errors.New("the assertion names no audience")
 	}
 
-	// ── Authentication ────────────────────────────────────────────────
+	// ââ Authentication ââââââââââââââââââââââââââââââââââââââââââââââââ
 	stmts := children(a, nsAssertion, "AuthnStatement")
 	if len(stmts) == 0 {
 		return nil, errors.New("the assertion has no AuthnStatement")
@@ -445,6 +460,9 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 	as := stmts[0]
 	if out.AuthnInstant, err = instant(as.SelectAttrValue("AuthnInstant", "")); err != nil {
 		return nil, err
+	}
+	if p.ForceAuthn && out.AuthnInstant.Before(p.Issued.Add(-skew)) {
+		return nil, fmt.Errorf("authentication was forced, and the IdP answered with one from %s, before the request", out.AuthnInstant.Format(time.RFC3339))
 	}
 	out.SessionIndex = as.SelectAttrValue("SessionIndex", "")
 	if s := as.SelectAttrValue("SessionNotOnOrAfter", ""); s != "" {
@@ -464,7 +482,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		return nil, fmt.Errorf("authentication context %q was not one of those requested", out.AuthnContext)
 	}
 
-	// ── Attributes ────────────────────────────────────────────────────
+	// ââ Attributes ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 	for _, st := range children(a, nsAssertion, "AttributeStatement") {
 		for _, at := range children(st, nsAssertion, "Attribute") {
 			name := at.SelectAttrValue("Name", "")
@@ -476,12 +494,17 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 					id := nameID(n)
 					val = id.NameQualifier + "!" + id.SPNameQualifier + "!" + id.Value
 				}
-				// ⛔ A scoped value from outside the IdP's scopes is
+				// â A scoped value from outside the IdP's scopes is
 				// DROPPED. Without this, any IdP in a federation of hundreds
 				// could say it is alice@another-university.fr, and every
 				// application keyed on eduPersonPrincipalName would believe
 				// it (saml-subject-id-attr-v1.0 3.5.2).
 				if scoped[name] && !idp.inScope(val) {
+					continue
+				}
+				// subject-id and pairwise-id have a grammar (saml-subject-id-attr-
+				// v1.0 3.2, 3.3): ASCII, one @. A value outside it is not one.
+				if (name == SubjectID || name == PairwiseID) && !subjectIDSyntax.MatchString(val) {
 					continue
 				}
 				if val != "" {
@@ -491,7 +514,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		}
 	}
 
-	// ── Replay: last, so an invalid assertion does not burn its ID ────
+	// ââ Replay: last, so an invalid assertion does not burn its ID ââââ
 	if !sp.Replay.Use(idp.EntityID+" "+out.ID, expires) {
 		return nil, errors.New("this assertion has already been used")
 	}
@@ -537,3 +560,10 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// maxPendingAge is how long a request may wait for its response: a login
+// left open for an hour is not one to complete.
+const maxPendingAge = time.Hour
+
+// subjectIDSyntax is the ABNF of saml-subject-id-attr-v1.0 3.2 and 3.3.
+var subjectIDSyntax = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9=-]{0,126}@[a-zA-Z0-9][a-zA-Z0-9.-]{0,126}$`)

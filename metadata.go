@@ -88,6 +88,11 @@ func (i *IdP) Has(category string) bool {
 // (saml-subject-id-attr-v1.0, 3.5.2) prescribes "for compatibility reasons"
 // even though the values themselves compare case-insensitively.
 func (i *IdP) inScope(value string) bool {
+	// Exactly one @: "x@evil.example@univ.fr" ends in a granted scope, and
+	// a reader splitting at the first @ sees another one.
+	if strings.Count(value, "@") != 1 {
+		return false
+	}
 	at := strings.LastIndexByte(value, '@')
 	if at <= 0 || at == len(value)-1 {
 		return false
@@ -107,6 +112,15 @@ type Metadata struct {
 	// HTTP-Redirect SingleSignOnService are here; the others could not be
 	// sent anybody.
 	IdPs map[string]*IdP
+
+	// Skipped says what was left out, and why: an entity whose signing
+	// certificates none parse, one described twice, a certificate that does
+	// not. ⛔ One member's mistake must not take the federation's other
+	// IdPs away -- it used to: a single certificate Go refuses (a negative
+	// serial, since Go 1.23) failed the whole document.
+	Skipped []string
+
+	twice map[string]bool // entity IDs seen more than once
 
 	// ValidUntil is when the signer stops vouching for this document. After
 	// it, the document is refused, and a server still holding it should
@@ -147,7 +161,7 @@ func (m *Metadata) Sorted(langs ...string) []*IdP {
 //	cert := ... // RENATER's metadata-signature-2026.pem, checked by fingerprint ONCE
 //	md, err := saml.ParseMetadata(body, cert, time.Now())
 //
-// ⛔ The certificate is a parameter, never something fetched alongside the
+// â The certificate is a parameter, never something fetched alongside the
 // metadata: a key that arrives over the same channel as the document it
 // vouches for vouches for nothing. RENATER says the same -- download it once,
 // check its fingerprint, keep a local copy.
@@ -162,7 +176,7 @@ func ParseMetadata(data []byte, cert *x509.Certificate, now time.Time) (*Metadat
 	if cert == nil {
 		return nil, errors.New("metadata cannot be trusted without the federation's signing certificate")
 	}
-	root, err := parse(data)
+	root, err := parse(data, metadataLimits)
 	if err != nil {
 		return nil, err
 	}
@@ -209,13 +223,22 @@ func collect(md *Metadata, el *etree.Element, now time.Time) error {
 		}
 	}
 	if is(el, nsMetadata, "EntityDescriptor") {
-		idp, err := entity(el)
+		idp, err := entity(el, md)
 		if err != nil {
 			return err
 		}
 		if idp != nil {
-			if _, dup := md.IdPs[idp.EntityID]; dup {
-				return fmt.Errorf("metadata describes %s twice", idp.EntityID)
+			// Twice: neither is believed, since nothing says which is right.
+			if _, dup := md.IdPs[idp.EntityID]; dup || md.twice[idp.EntityID] {
+				if dup {
+					md.Skipped = append(md.Skipped, idp.EntityID+": described more than once")
+				}
+				delete(md.IdPs, idp.EntityID)
+				if md.twice == nil {
+					md.twice = map[string]bool{}
+				}
+				md.twice[idp.EntityID] = true
+				return nil
 			}
 			md.IdPs[idp.EntityID] = idp
 		}
@@ -233,7 +256,7 @@ func collect(md *Metadata, el *etree.Element, now time.Time) error {
 
 // entity reads one EntityDescriptor, returning nil when it is not a SAML 2.0
 // identity provider.
-func entity(ed *etree.Element) (*IdP, error) {
+func entity(ed *etree.Element, md *Metadata) (*IdP, error) {
 	id := ed.SelectAttrValue("entityID", "")
 	var role *etree.Element
 	for _, r := range children(ed, nsMetadata, "IDPSSODescriptor") {
@@ -255,6 +278,7 @@ func entity(ed *etree.Element) (*IdP, error) {
 	if idp.SSO == "" {
 		return nil, nil
 	}
+	badKey := false
 	for _, kd := range children(role, nsMetadata, "KeyDescriptor") {
 		// A key with no "use" is for both; one marked for encryption only is
 		// not a signing key, however it is formatted.
@@ -264,11 +288,15 @@ func entity(ed *etree.Element) (*IdP, error) {
 		for _, c := range descendants(kd, nsDSig, "X509Certificate") {
 			der, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(c.Text()), ""))
 			if err != nil {
-				return nil, fmt.Errorf("%s: a signing certificate is not base64: %w", id, err)
+				md.Skipped = append(md.Skipped, fmt.Sprintf("%s: a signing certificate is not base64: %v", id, err))
+				badKey = true
+				continue
 			}
 			cert, err := x509.ParseCertificate(der)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", id, err)
+				md.Skipped = append(md.Skipped, fmt.Sprintf("%s: a signing certificate: %v", id, err))
+				badKey = true
+				continue
 			}
 			idp.Keys = append(idp.Keys, cert)
 		}
@@ -278,7 +306,7 @@ func entity(ed *etree.Element) (*IdP, error) {
 	for _, holder := range []*etree.Element{ed, role} {
 		for _, ext := range children(holder, nsMetadata, "Extensions") {
 			for _, s := range children(ext, nsShibMD, "Scope") {
-				// ⛔ A regular-expression scope is ignored, not honoured. The
+				// â A regular-expression scope is ignored, not honoured. The
 				// profile (3.5.2.2) says deployments SHOULD avoid them and
 				// implementations MAY reject them: "extremely easy to write
 				// regular expressions which match the desired patterns but also
@@ -329,6 +357,10 @@ func entity(ed *etree.Element) (*IdP, error) {
 				}
 			}
 		}
+	}
+	if badKey && len(idp.Keys) == 0 {
+		md.Skipped = append(md.Skipped, id+": left out, no signing certificate of it parses")
+		return nil, nil
 	}
 	return idp, nil
 }

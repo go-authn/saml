@@ -153,7 +153,7 @@ func (sp *SP) decrypt(ea *etree.Element, authenticated bool) (*etree.Element, er
 		}
 		pt = pt[:len(pt)-n]
 	}
-	root, err := parse(pt)
+	root, err := parse(pt, responseLimits)
 	if err != nil {
 		return nil, fmt.Errorf("decrypted assertion: %w", err)
 	}
