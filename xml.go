@@ -5,8 +5,10 @@ package saml
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -50,7 +52,12 @@ const (
 // trip: the element or attribute a signature covered was not the one the
 // application read. xml-roundtrip-validator exists to refuse exactly those
 // documents, and it is cheap next to what it guards.
-func parse(data []byte) (*etree.Element, error) {
+func parse(data []byte, lim limits) (*etree.Element, error) {
+	// Bounded first, in one linear pass: what follows is not linear in what
+	// an unsigned document can hold (see limits).
+	if err := lim.check(data); err != nil {
+		return nil, err
+	}
 	if err := xrv.Validate(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("the document does not survive a round trip: %w", err)
 	}
@@ -265,4 +272,78 @@ func algorithms(sig *etree.Element) error {
 		return fmt.Errorf("digest algorithm %q is not accepted", a)
 	}
 	return nil
+}
+
+// limits is the shape a document may have before anything costly reads it.
+//
+// ⛔ Parsing, the round-trip check and finding the signature all run before
+// the signature is verified, so an anonymous browser chooses their input,
+// and none is linear in it:
+//
+//   - goxmldsig copies the map of in-scope namespace prefixes at every
+//     element it walks, twice: 13,000 declarations on the root and a fake
+//     Signature made one unsigned response cost 1.1 s and 1.3 GB, and two
+//     IdP keys (a rollover) twice that -- measured, three such requests a
+//     second held a 16-core machine.
+//   - the round-trip validator makes a 4 KiB writer per token: 49,000 empty
+//     elements in 256 KiB cost 527 MB.
+//
+// Real documents are far inside these: eduGAIN's aggregate (94 MB, 548,000
+// elements) nests 7 deep, with at most 24 namespace prefixes in scope and
+// 27 attributes on an element; RENATER's, 7, 15 and 19.
+type limits struct {
+	inScopeNamespaces int // namespace declarations in scope at any element
+	attributes        int // on one element
+	depth             int
+	elements          int // in the document; 0 for no limit (metadata, bounded by its size)
+}
+
+var (
+	responseLimits = limits{inScopeNamespaces: 64, attributes: 64, depth: 32, elements: 4000}
+	metadataLimits = limits{inScopeNamespaces: 64, attributes: 64, depth: 32}
+)
+
+// check walks data once, token by token, holding no more than the stack.
+func (lim limits) check(data []byte) error {
+	d := xml.NewDecoder(bytes.NewReader(data))
+	var decls []int // per open element
+	inScope, elements := 0, 0
+	for {
+		t, err := d.RawToken()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("the document does not parse: %w", err)
+		}
+		switch t := t.(type) {
+		case xml.StartElement:
+			elements++
+			if lim.elements > 0 && elements > lim.elements {
+				return fmt.Errorf("more than %d elements", lim.elements)
+			}
+			if len(t.Attr) > lim.attributes {
+				return fmt.Errorf("an element with %d attributes, more than %d", len(t.Attr), lim.attributes)
+			}
+			n := 0
+			for _, a := range t.Attr {
+				if a.Name.Space == "xmlns" || (a.Name.Space == "" && a.Name.Local == "xmlns") {
+					n++
+				}
+			}
+			decls = append(decls, n)
+			if inScope += n; inScope > lim.inScopeNamespaces {
+				return fmt.Errorf("more than %d namespace declarations in scope", lim.inScopeNamespaces)
+			}
+			if len(decls) > lim.depth {
+				return fmt.Errorf("nested more than %d deep", lim.depth)
+			}
+		case xml.EndElement:
+			if len(decls) == 0 {
+				return errors.New("the document does not parse: an end with no start")
+			}
+			inScope -= decls[len(decls)-1]
+			decls = decls[:len(decls)-1]
+		}
+	}
 }

@@ -3,6 +3,8 @@
 package saml
 
 import (
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -88,7 +90,7 @@ func TestAssertionChecks(t *testing.T) {
 		}, "not a SAML time"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			el, err := parse([]byte(mk(c.edit)))
+			el, err := parse([]byte(mk(c.edit)), responseLimits)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +107,7 @@ func TestAssertionChecks(t *testing.T) {
 	s = strings.Replace(s, "</saml:AudienceRestriction>", "</saml:AudienceRestriction><saml:OneTimeUse/>", 1)
 	s = strings.Replace(s, `SessionIndex="_s1"`, `SessionIndex="_s1" SessionNotOnOrAfter="2026-09-29T18:00:00Z"`, 1)
 	s = strings.Replace(s, "</saml:AttributeStatement>", `<saml:Attribute Name="`+EduPersonTargetedID+`"><saml:AttributeValue><saml:NameID NameQualifier="`+idpEntity+`" SPNameQualifier="`+spEntity+`">opaque</saml:NameID></saml:AttributeValue></saml:Attribute><saml:Attribute Name="`+Mail+`"><saml:AttributeValue></saml:AttributeValue></saml:Attribute></saml:AttributeStatement>`, 1)
-	el, _ := parse([]byte(s))
+	el, _ := parse([]byte(s), responseLimits)
 	a, err := sp.assertion(el, idp, p, judgeNow)
 	if err != nil {
 		t.Fatal(err)
@@ -212,15 +214,87 @@ func TestMetadataShapes(t *testing.T) {
 
 	for name, body := range map[string]string{
 		"no validUntil":  `><!--SIG-->` + idp("a.fr", "") + `</md:EntitiesDescriptor>`,
-		"twice":          `validUntil="2026-10-01T00:00:00Z"><!--SIG-->` + idp("a.fr", "") + idp("a.fr", "") + `</md:EntitiesDescriptor>`,
 		"bad validUntil": `validUntil="soon"><!--SIG-->` + `</md:EntitiesDescriptor>`,
 		"bad cache":      `validUntil="2026-10-01T00:00:00Z" cacheDuration="1 hour"><!--SIG--></md:EntitiesDescriptor>`,
 		"bad nested":     `validUntil="2026-10-01T00:00:00Z"><!--SIG--><md:EntitiesDescriptor validUntil="x"/></md:EntitiesDescriptor>`,
-		"bad cert":       `validUntil="2026-10-01T00:00:00Z"><!--SIG-->` + strings.Replace(idp("a.fr", ""), b64(w.idp.cert.Raw), "AAAA", 1) + `</md:EntitiesDescriptor>`,
-		"bad base64":     `validUntil="2026-10-01T00:00:00Z"><!--SIG-->` + strings.Replace(idp("a.fr", ""), b64(w.idp.cert.Raw), "!!!", 1) + `</md:EntitiesDescriptor>`,
 	} {
 		if _, err := ParseMetadata(sign(body), w.idp.cert, judgeNow); err == nil {
 			t.Errorf("%s: ACCEPTED", name)
+		}
+	}
+
+	// ⛔ One member's mistake leaves that member out, not the federation:
+	// the others stay, and what was left out is said.
+	for name, body := range map[string]string{
+		"twice":      idp("a.fr", "") + idp("a.fr", ""),
+		"bad cert":   strings.Replace(idp("a.fr", ""), b64(w.idp.cert.Raw), "AAAA", 1),
+		"bad base64": strings.Replace(idp("a.fr", ""), b64(w.idp.cert.Raw), "!!!", 1),
+	} {
+		md, err := ParseMetadata(sign(`validUntil="2026-10-01T00:00:00Z"><!--SIG-->`+body+idp("b.fr", "")+`</md:EntitiesDescriptor>`), w.idp.cert, judgeNow)
+		if err != nil {
+			t.Errorf("%s: the whole federation refused: %v", name, err)
+			continue
+		}
+		if _, there := md.IdPs["a.fr"]; there {
+			t.Errorf("%s: a.fr kept", name)
+		}
+		if _, there := md.IdPs["b.fr"]; !there || len(md.Skipped) == 0 {
+			t.Errorf("%s: b.fr %v, skipped %q", name, there, md.Skipped)
+		}
+	}
+}
+
+// â Documents shaped to make the parsing before the signature cost
+// gigabytes are refused by their shape, in one linear pass. Measured before
+// the limits: the namespace bomb cost 1.1 s and 1.3 GB per unsigned
+// response, the flat one 527 MB.
+func TestShapeLimits(t *testing.T) {
+	const root = `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="_r" Version="2.0" IssueInstant="2026-10-01T00:00:00Z"`
+	var nsBomb, spread, flat, wide, deep strings.Builder
+	spread.WriteString(root + ">")
+	for l := range 20 {
+		spread.WriteString("<a")
+		for i := range 30 {
+			fmt.Fprintf(&spread, ` xmlns:n%d_%d="u"`, l, i)
+		}
+		spread.WriteString(">")
+	}
+	spread.WriteString(strings.Repeat("</a>", 20) + "</samlp:Response>")
+	nsBomb.WriteString(root)
+	for i := range 13000 {
+		fmt.Fprintf(&nsBomb, ` xmlns:n%d="u"`, i)
+	}
+	nsBomb.WriteString(`><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"/></samlp:Response>`)
+	flat.WriteString(root + ">")
+	for range 49000 {
+		flat.WriteString("<a/>")
+	}
+	flat.WriteString("</samlp:Response>")
+	wide.WriteString(root)
+	for i := range 100 {
+		fmt.Fprintf(&wide, ` a%d="x"`, i)
+	}
+	wide.WriteString("/>")
+	deep.WriteString(root + ">" + strings.Repeat("<a>", 40) + strings.Repeat("</a>", 40) + "</samlp:Response>")
+	for name, c := range map[string]struct{ doc, want string }{
+		"13,000 namespace declarations on one element": {nsBomb.String(), "attributes"},
+		"600 declarations in scope, 30 per element":    {spread.String(), "namespace declarations"},
+		"49,000 elements": {flat.String(), "elements"},
+		"100 attributes":  {wide.String(), "attributes"},
+		"40 deep":         {deep.String(), "deep"},
+	} {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		_, err := parse([]byte(c.doc), responseLimits)
+		runtime.ReadMemStats(&after)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want a refusal naming %q", name, err, c.want)
+		}
+		// Refused in one pass over the bytes: tens of megabytes would mean
+		// the costly readers ran first.
+		if mb := float64(after.TotalAlloc-before.TotalAlloc) / (1 << 20); mb > 32 {
+			t.Errorf("%s: %.0f MB allocated to refuse it", name, mb)
 		}
 	}
 }
