@@ -126,3 +126,24 @@ jobs:
             ppc64le)  GOARCH=ppc64le go test -count=1 -exec=qemu-ppc64le-static ./... ;;
             s390x)    GOARCH=s390x   go test -count=1 -exec=qemu-s390x-static ./... ;;
           esac
+
+  # crewjam/saml's identity provider answering this SP: a second foreign
+  # judge beside xmlsec1, one that writes whole responses the way a deployed
+  # IdP does. A module of its own, so `./...` above does not reach it and
+  # its requirements never become the library's.
+  interop:
+    name: interop (crewjam/saml IdP)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: interop/crewjam
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+          cache-dependency-path: interop/crewjam/go.sum
+      - run: go vet ./...
+      - run: go test -count=1 -v ./...
