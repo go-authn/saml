@@ -76,6 +76,12 @@ enforced the dates would refuse a working IdP; this one does not look at them.
 - **xmlsec1** signs and encrypts every response in the suite, from templates:
   GCM and CBC, RSA-OAEP with SHA-1 and with SHA-256/MGF1-SHA256, Response
   signed, assertion signed, both. The package only verifies and decrypts.
+- **crewjam/saml's IdP** writes whole responses to this SP's AuthnRequests,
+  through the HTTP-Redirect and HTTP-POST bindings, from metadata scoped and
+  signed like a federation's (`interop/crewjam`, a module of its own): signed
+  with RSA-SHA256 and encrypted AES-128-CBC with the Response signed, they are
+  accepted; its default RSA-SHA1 is refused by name; and the same CBC assertion
+  with the Response signature removed is refused before decryption.
 - The refusals were **sabotage-checked**: removing the scope filter, the CBC
   gate, the audience check, the single-assertion rule, the SHA-1 refusal and
   the replay cache each turns a test red.
