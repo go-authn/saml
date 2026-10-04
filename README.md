@@ -47,6 +47,8 @@ faces the federation. The other half is an OpenID Connect provider.
 |---|---|
 | metadata not signed by the **pinned** certificate | the certificate is a parameter, never fetched alongside the metadata: a key that arrives over the same channel as the document it vouches for vouches for nothing |
 | metadata past its `validUntil`, or with **none** | a signed document that never expires is a key compromise that never ends. A failed refresh keeps the last good copy, until that copy expires |
+| metadata valid for **more than 28 days** from now | a document valid for years is one a replay keeps alive for years. `Federation.MaxValidity` changes the bound; a negative value removes it |
+| metadata **older** than the copy in use | it is validly signed and not yet expired, and it may be the one carrying a key since revoked, served by whoever stands on the path |
 | nothing signed, or signed with **SHA-1** | saml-profiles 4.1.4.5: over POST the assertion must be signed |
 | **more than one** assertion | the profile allows several; accepting them is how a signed one and an unsigned one arrive together and the wrong one is read (CVE-2022-41912) |
 | anything but **what the signature covered** | only the element rebuilt from the digested bytes is read afterwards, never the document as it arrived |
