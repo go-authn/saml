@@ -106,7 +106,8 @@ func (a *Assertion) Subject() (value, from string) {
 	if v := a.First(EduPersonTargetedID); v != "" {
 		return v, EduPersonTargetedID
 	}
-	if a.NameID.Format == "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent" && a.NameID.Value != "" {
+	if a.NameID.Format == "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent" && a.NameID.Value != "" &&
+		a.IdP != nil && a.NameID.NameQualifier == a.IdP.EntityID {
 		return a.NameID.NameQualifier + "!" + a.NameID.SPNameQualifier + "!" + a.NameID.Value, "persistent NameID"
 	}
 	return "", ""

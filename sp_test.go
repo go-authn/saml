@@ -175,11 +175,16 @@ func TestDiscovery(t *testing.T) {
 }
 
 func TestSubjectOrder(t *testing.T) {
-	a := &Assertion{Attributes: map[string][]string{}}
+	a := &Assertion{Attributes: map[string][]string{}, IdP: &IdP{EntityID: "idp"}}
 	if v, from := a.Subject(); v != "" || from != "" {
 		t.Fatal("a subject from nothing")
 	}
-	a.NameID = NameID{Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent", NameQualifier: "idp", SPNameQualifier: "sp", Value: "xyz"}
+	// A persistent NameID qualified by ANOTHER IdP is not this IdP's to give.
+	a.NameID = NameID{Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent", NameQualifier: "other-idp", SPNameQualifier: "sp", Value: "xyz"}
+	if v, _ := a.Subject(); v != "" {
+		t.Errorf("a persistent NameID qualified by another IdP gave %q", v)
+	}
+	a.NameID.NameQualifier = "idp"
 	if v, _ := a.Subject(); v != "idp!sp!xyz" {
 		t.Errorf("persistent NameID: %q", v)
 	}
