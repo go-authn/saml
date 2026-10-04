@@ -93,6 +93,24 @@ enforced the dates would refuse a working IdP; this one does not look at them.
   canonicalisation normalises it. It stands as defence in depth, and the test
   that looks like its witness says so.
 
+## What a deployment adds
+
+- **Its own metadata.** `sp.Metadata(saml.Description{...})` writes the SP
+  metadata the federation registers: the entity ID, the ACS, and the key,
+  published without a `use` so it serves for signing and encryption, with GCM
+  listed before CBC so an IdP that honours the list does not fall back.
+- **Discovery.** `saml.DiscoveryURL(service, entityID, returnURL)` sends the
+  person to the federation's discovery service, and `saml.Chosen(query, fed)`
+  reads the IdP it sends back, refusing one that is not in the federation: the
+  parameter comes through the browser, and anybody can type an entity ID.
+- **⛔ A replay cache that spans the deployment.** `SP.Replay` defaults to
+  `NewMemoryReplay()`, one process's memory. That is right for one process and
+  wrong for several behind a load balancer: each would accept the same
+  assertion once. A restart empties it too. Several instances implement
+  `Replay` over shared storage; its `Use` must be atomic, so that two requests
+  carrying the same assertion at the same moment get one `true` and one
+  `false`.
+
 ## What it is not
 
 No SAML IdP, no Single Logout, no artifact binding, no signed AuthnRequests
