@@ -111,6 +111,26 @@ enforced the dates would refuse a working IdP; this one does not look at them.
   carrying the same assertion at the same moment get one `true` and one
   `false`.
 
+## Upgrading to v0.3.0: some identifiers change
+
+v0.3.0 holds an unscoped identifier to the IdP that signed it (an IdP of the
+federation could otherwise produce another's, byte for byte). For honest IdPs,
+two shapes of `Subject()` change:
+
+| an IdP that sends | before v0.3.0 | from v0.3.0 |
+|---|---|---|
+| an opaque string `eduPersonTargetedID` `v` | `v` | `IdP!SP!v` |
+| an ePTID or persistent NameID with no `NameQualifier` | `!SPQ!v` | `IdP!SPQ!v` |
+
+Everything else (subject-id, pairwise-id, eppn, and identifiers already
+qualified by their own IdP) is unchanged. **A stored identifier of those two
+shapes no longer matches**: whoever keyed accounts on `Subject()` meets those
+people as new. It cannot be mapped back automatically, because the old form
+of the second row is the same for two IdPs that left the qualifier empty,
+which is the collision this release removes. A deployment that stored them
+maps each one to its IdP (it knows which IdP each session came from) before
+upgrading, or stays on v0.2.x, accepting that risk.
+
 ## What it is not
 
 No SAML IdP, no Single Logout, no artifact binding, no signed AuthnRequests
