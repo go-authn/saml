@@ -1,6 +1,6 @@
 module github.com/go-authn/saml/interop/crewjam
 
-go 1.26.4
+go 1.27.1
 
 replace github.com/go-authn/saml => ../..
 
