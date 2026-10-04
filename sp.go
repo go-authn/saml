@@ -380,6 +380,14 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		return nil, err
 	} else if n != nil {
 		out.NameID = nameID(n)
+		// ⛔ A persistent NameID is unscoped: only its NameQualifier says
+		// whose it is, and the IdP writes that itself. One naming another IdP
+		// is not believed (Subject will not use it); an empty one is this
+		// IdP's. Without this, any IdP of the federation could produce
+		// another's persistent identifier byte for byte (security audit).
+		if out.NameID.NameQualifier == "" {
+			out.NameID.NameQualifier = idp.EntityID
+		}
 	}
 	var expires time.Time
 	for _, sc := range children(subj, nsAssertion, "SubjectConfirmation") {
@@ -492,7 +500,26 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 					// eduPersonTargetedID's value is a NameID, written the
 					// way Shibboleth writes it: IdP!SP!value.
 					id := nameID(n)
+					// ⛔ The qualifier is the IdP's own claim about whose
+					// identifier this is. Only the IdP that signed may be
+					// named; an empty one is that IdP (security audit: any
+					// IdP of the federation produced another's ePTID).
+					switch id.NameQualifier {
+					case "":
+						id.NameQualifier = idp.EntityID
+					case idp.EntityID:
+					default:
+						continue
+					}
 					val = id.NameQualifier + "!" + id.SPNameQualifier + "!" + id.Value
+				} else if name == EduPersonTargetedID && val != "" {
+					// The older string form, IdP!SP!value, is held to the same
+					// rule; an opaque value is qualified by the IdP that said it.
+					if i := strings.IndexByte(val, '!'); i < 0 {
+						val = idp.EntityID + "!" + sp.EntityID + "!" + val
+					} else if val[:i] != idp.EntityID {
+						continue
+					}
 				}
 				// â A scoped value from outside the IdP's scopes is
 				// DROPPED. Without this, any IdP in a federation of hundreds
