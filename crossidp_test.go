@@ -11,7 +11,7 @@ import (
 // eduPersonTargetedID qualified by ANOTHER IdP's entity ID. Subject() returns
 // exactly the identifier the victim IdP's genuine assertion yields.
 func TestAnotherIdPCannotProduceAnIdPsTargetedID(t *testing.T) {
-	const evilEntity = "https://idp.evil-univ.fr/idp/shibboleth"
+	const evilEntity = "https://idp.evil-univ.example/idp/shibboleth"
 	victimValue := `<saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent" NameQualifier="` + idpEntity + `" SPNameQualifier="` + spEntity + `">VICTIM-PTID</saml:NameID>`
 
 	// 1. The genuine assertion from the victim's IdP.
@@ -29,7 +29,7 @@ func TestAnotherIdPCannotProduceAnIdPsTargetedID(t *testing.T) {
 	for _, form := range []string{victimValue, idpEntity + "!" + spEntity + "!VICTIM-PTID"} {
 		w := newWorld(t) // fresh key = the evil IdP's own key
 		w.provider.EntityID = evilEntity
-		w.provider.Scopes = []string{"evil-univ.fr"}
+		w.provider.Scopes = []string{"evil-univ.example"}
 		w.fed.IdPs = map[string]*IdP{evilEntity: w.provider}
 		w.pending.IdP = evilEntity
 		a := defaultAssertion()
@@ -49,10 +49,10 @@ func TestAnotherIdPCannotProduceAnIdPsTargetedID(t *testing.T) {
 
 // Security audit, reproduced before the fix: the same with the Subject's own persistent NameID (assertion.go Subject's last fallback).
 func TestAnotherIdPCannotProduceAnIdPsPersistentNameID(t *testing.T) {
-	const evilEntity = "https://idp.evil-univ.fr/idp/shibboleth"
+	const evilEntity = "https://idp.evil-univ.example/idp/shibboleth"
 	w := newWorld(t)
 	w.provider.EntityID = evilEntity
-	w.provider.Scopes = []string{"evil-univ.fr"}
+	w.provider.Scopes = []string{"evil-univ.example"}
 	w.fed.IdPs = map[string]*IdP{evilEntity: w.provider}
 	w.pending.IdP = evilEntity
 	a := defaultAssertion()

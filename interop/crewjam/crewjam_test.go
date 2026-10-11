@@ -34,7 +34,7 @@ import (
 	dsig "github.com/russellhaering/goxmldsig"
 )
 
-const scope = "univ-example.fr"
+const scope = "univ-example.example"
 
 func party(t *testing.T, cn string) (*rsa.PrivateKey, *x509.Certificate) {
 	t.Helper()

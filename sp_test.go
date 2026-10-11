@@ -39,7 +39,7 @@ func testSP(t *testing.T) *SP {
 
 func TestRequest(t *testing.T) {
 	sp := testSP(t)
-	idp := &IdP{EntityID: idpEntity, SSO: "https://idp.univ-example.fr/SSO?existing=1"}
+	idp := &IdP{EntityID: idpEntity, SSO: "https://idp.univ-example.example/SSO?existing=1"}
 	u, p, err := sp.Request(idp, "state-123", Options{ForceAuthn: true, IsPassive: true,
 		AuthnContext: []string{"https://refeds.org/profile/mfa"}})
 	if err != nil {

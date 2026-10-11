@@ -29,10 +29,10 @@ import (
 // in the CI lanes that install it.
 
 const (
-	idpEntity = "https://idp.univ-example.fr/idp/shibboleth"
+	idpEntity = "https://idp.univ-example.example/idp/shibboleth"
 	spEntity  = "https://bridge.example.org/saml"
 	acsURL    = "https://bridge.example.org/saml/acs"
-	scope     = "univ-example.fr"
+	scope     = "univ-example.example"
 )
 
 var judgeNow = time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
@@ -112,7 +112,7 @@ func newWorld(t *testing.T) *world {
 	w.sp = newParty(t, w.dir, "sp")
 	w.provider = &IdP{
 		EntityID: idpEntity,
-		SSO:      "https://idp.univ-example.fr/idp/profile/SAML2/Redirect/SSO",
+		SSO:      "https://idp.univ-example.example/idp/profile/SAML2/Redirect/SSO",
 		Keys:     []*x509.Certificate{w.idp.cert},
 		Scopes:   []string{scope},
 		Names:    map[string]string{"fr": "Université Exemple"},
@@ -167,8 +167,8 @@ func defaultAssertion() assertion {
 		Attributes: map[string][]string{
 			EduPersonPrincipalName:     {"alice@" + scope},
 			SubjectID:                  {"A1B2C3@" + scope},
-			EduPersonScopedAffiliation: {"member@" + scope, "staff@another-university.fr"},
-			Mail:                       {"alice@univ-example.fr"},
+			EduPersonScopedAffiliation: {"member@" + scope, "staff@another-university.example"},
+			Mail:                       {"alice@univ-example.example"},
 			DisplayName:                {"Alice Martin"},
 		},
 	}
