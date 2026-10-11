@@ -52,7 +52,7 @@ faces the federation. The other half is an OpenID Connect provider.
 | nothing signed, or signed with **SHA-1** | saml-profiles 4.1.4.5: over POST the assertion must be signed |
 | **more than one** assertion | the profile allows several; accepting them is how a signed one and an unsigned one arrive together and the wrong one is read (CVE-2022-41912) |
 | anything but **what the signature covered** | only the element rebuilt from the digested bytes is read afterwards, never the document as it arrived |
-| a **scoped identifier outside the IdP's scopes** | without this any of hundreds of IdPs could say it is `alice@another-university.fr`, and everything keyed on eppn would believe it |
+| a **scoped identifier outside the IdP's scopes** | without this any of hundreds of IdPs could say it is `alice@another-university.example`, and everything keyed on eppn would believe it |
 | **CBC ciphertext nobody signed** | it is not even decrypted: unauthenticated CBC is a padding oracle ("XML Encryption is broken", 2011). RSA PKCS#1 v1.5 key transport is not accepted at all |
 | another audience, ACS, request, an **unsolicited** response | saml-profiles 4.1.4.3 |
 | an assertion **already used** | a bearer assertion is whoever holds it; the replay cache keeps its ID until it expires |

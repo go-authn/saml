@@ -58,7 +58,7 @@ func TestAccepted(t *testing.T) {
 			if a.First(EduPersonPrincipalName) != "alice@"+scope {
 				t.Errorf("eppn = %q", a.First(EduPersonPrincipalName))
 			}
-			// The IdP's scope is univ-example.fr: the affiliation it
+			// The IdP's scope is univ-example.example: the affiliation it
 			// claimed at another university is dropped, its own is kept.
 			if got := a.Attributes[EduPersonScopedAffiliation]; !slices.Equal(got, []string{"member@" + scope}) {
 				t.Errorf("scoped affiliation = %q: an out-of-scope value was KEPT", got)
@@ -102,7 +102,7 @@ func TestRefused(t *testing.T) {
 		{"another request", func(a *assertion) { a.InResponseTo = "_other" }, signed, "no bearer confirmation"},
 		{"unsolicited", func(a *assertion) { a.InResponseTo = "" }, response{signResponse: true, inResponseTo: "_x"}, "does not answer this request"},
 		{"expired", func(a *assertion) { a.NotOnOrAfter = judgeNow.Add(-10 * time.Minute) }, signed, "no bearer confirmation|expired"},
-		{"another issuer", func(a *assertion) { a.Issuer = "https://idp.another-university.fr/idp" }, signed, "issued by"},
+		{"another issuer", func(a *assertion) { a.Issuer = "https://idp.another-university.example/idp" }, signed, "issued by"},
 		{"a condition nobody understands", func(a *assertion) {
 			a.Extra = `<saml:Condition xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Unknown"/>`
 		}, signed, "not understood"},

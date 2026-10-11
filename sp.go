@@ -523,7 +523,7 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 				}
 				// â A scoped value from outside the IdP's scopes is
 				// DROPPED. Without this, any IdP in a federation of hundreds
-				// could say it is alice@another-university.fr, and every
+				// could say it is alice@another-university.example, and every
 				// application keyed on eduPersonPrincipalName would believe
 				// it (saml-subject-id-attr-v1.0 3.5.2).
 				if scoped[name] && !idp.inScope(val) {

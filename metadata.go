@@ -20,7 +20,7 @@ import (
 // speak for.
 type IdP struct {
 	// EntityID is the IdP's name in the federation, e.g.
-	// "https://idp.univ-example.fr/idp/shibboleth".
+	// "https://idp.univ-example.example/idp/shibboleth".
 	EntityID string
 
 	// SSO is the SingleSignOnService location for the HTTP-Redirect binding,
@@ -88,7 +88,7 @@ func (i *IdP) Has(category string) bool {
 // (saml-subject-id-attr-v1.0, 3.5.2) prescribes "for compatibility reasons"
 // even though the values themselves compare case-insensitively.
 func (i *IdP) inScope(value string) bool {
-	// Exactly one @: "x@evil.example@univ.fr" ends in a granted scope, and
+	// Exactly one @: "x@evil.example@univ.example" ends in a granted scope, and
 	// a reader splitting at the first @ sees another one.
 	if strings.Count(value, "@") != 1 {
 		return false

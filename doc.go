@@ -36,7 +36,7 @@
 //   - ⛔ A scoped identifier -- eduPersonPrincipalName, subject-id,
 //     pairwise-id, eduPersonScopedAffiliation -- in a scope its IdP's metadata
 //     does not grant. Without this any of a federation's hundreds of IdPs
-//     could say it is alice@another-university.fr.
+//     could say it is alice@another-university.example.
 //   - ⛔ AES-CBC ciphertext that no verified signature covered: it is not even
 //     decrypted, because unauthenticated CBC is a padding oracle. RSA PKCS#1
 //     v1.5 key transport is not accepted at all.
