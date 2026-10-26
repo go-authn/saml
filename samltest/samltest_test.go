@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -259,7 +260,8 @@ func TestPartyFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := os.Stat(k); st.Mode().Perm() != 0o600 {
+	// Windows has no POSIX permission bits: os.Stat reports 0666 there.
+	if st, _ := os.Stat(k); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Errorf("key file mode %v", st.Mode().Perm())
 	}
 	if _, err := os.Stat(c); err != nil {
