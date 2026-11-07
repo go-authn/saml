@@ -526,6 +526,17 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 				// could say it is alice@another-university.example, and every
 				// application keyed on eduPersonPrincipalName would believe
 				// it (saml-subject-id-attr-v1.0 3.5.2).
+				// ⛔ schacHomeOrganization is the organisation's domain, and a relying
+				// party "is strongly encouraged to check attribute values against
+				// the Issuer's published shibmd:Scope elements" (SWITCH, attribute
+				// page, opened 2026-11-07); SAFIRE: it "must exactly match one of
+				// the shibmd:Scope elements" (case sensitive); Shibboleth SP does
+				// the same (SSPCPP-677). Left unchecked, an IdP of one institution
+				// states another's, and a service that filters on it admits the
+				// first as the second.
+				if name == SchacHomeOrganization && !idp.hasScope(val) {
+					continue
+				}
 				if scoped[name] && !idp.inScope(val) {
 					continue
 				}

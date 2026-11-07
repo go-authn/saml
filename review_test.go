@@ -160,3 +160,26 @@ func TestSubjectIDSyntax(t *testing.T) {
 		t.Errorf("a subject-id with a space in it was taken: %v", got.Attributes[SubjectID])
 	}
 }
+
+// schacHomeOrganization is held to the IdP's shibmd:Scope values, as the scoped
+// attributes are (SWITCH and SAFIRE attribute pages): an IdP of one institution
+// that states another's has the value dropped. Exact and case-sensitive.
+func TestSchacHomeOrganizationIsHeldToTheIdPsScopes(t *testing.T) {
+	for value, kept := range map[string]bool{
+		scope:                  true,
+		"univ-other.example":   false, // another institution's
+		strings.ToUpper(scope): false, // scopes are case sensitive
+		"x." + scope:           false,
+	} {
+		w := newWorld(t)
+		a := defaultAssertion()
+		a.Attributes[SchacHomeOrganization] = []string{value}
+		got, err := w.newSP().Accept(w.build(a, response{signResponse: true}), w.pending)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if has := got.First(SchacHomeOrganization) == value; has != kept {
+			t.Errorf("schacHomeOrganization %q: kept = %v, want %v", value, has, kept)
+		}
+	}
+}
