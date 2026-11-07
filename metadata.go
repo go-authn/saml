@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,6 +81,12 @@ func (i *IdP) Has(category string) bool {
 		}
 	}
 	return false
+}
+
+// hasScope says whether v is one of this IdP's scopes, compared as the scopes
+// are: case-sensitively, exactly (a regexp scope is not taken as one).
+func (i *IdP) hasScope(v string) bool {
+	return v != "" && slices.Contains(i.Scopes, v)
 }
 
 // inScope says whether a scoped value's scope is one this IdP may assert.

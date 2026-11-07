@@ -52,6 +52,7 @@ faces the federation. The other half is an OpenID Connect provider.
 | nothing signed, or signed with **SHA-1** | saml-profiles 4.1.4.5: over POST the assertion must be signed |
 | **more than one** assertion | the profile allows several; accepting them is how a signed one and an unsigned one arrive together and the wrong one is read (CVE-2022-41912) |
 | anything but **what the signature covered** | only the element rebuilt from the digested bytes is read afterwards, never the document as it arrived |
+| a **`schacHomeOrganization` that is not one of the IdP's `shibmd:Scope` values** (exact, case-sensitive; v0.6.0) | dropped, as the SWITCH and SAFIRE attribute pages ask of a relying party: an IdP of one institution could state another's, and a service that filters on it (the gateway's `accept`) would admit it as that institution. **Upgrade:** an IdP whose metadata publishes no Scope for its domain no longer has its `schacHomeOrganization` read; ask its federation to publish it |
 | a **scoped identifier outside the IdP's scopes** | without this any of hundreds of IdPs could say it is `alice@another-university.example`, and everything keyed on eppn would believe it |
 | **CBC ciphertext nobody signed** | it is not even decrypted: unauthenticated CBC is a padding oracle ("XML Encryption is broken", 2011). RSA PKCS#1 v1.5 key transport is not accepted at all |
 | another audience, ACS, request, an **unsolicited** response | saml-profiles 4.1.4.3 |
