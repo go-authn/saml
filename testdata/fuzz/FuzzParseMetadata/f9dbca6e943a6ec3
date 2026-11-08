@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<A Aaaaaaaaaaaa=\"\"><Aa:aaaaaaaa Aaaaa:aa=\"\"><Aa:aaaaaaaa><Aa:aaaaaaaaaaaaaaaaaaaa Aaaaaaaaa=\"\"/>&")

@@ -113,6 +113,31 @@ jobs:
         with: { go-version-file: go.mod, check-latest: true, cache: true }
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+  # The corpus under testdata/fuzz is replayed by every `go test` above (a
+  # seed that stops being refused or accepted as it should fails there). This
+  # lane grows it: each target mutates for a short while, and an input that
+  # breaks a property fails the job and is written under testdata/fuzz, to be
+  # committed. `go test -fuzz` takes one target per invocation.
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzAccept, FuzzParseMetadata, FuzzDecrypt, FuzzLimits]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version-file: go.mod, check-latest: true, cache: true }
+      - run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 30s .
+      - name: keep the input that broke it
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: testdata/fuzz/${{ matrix.target }}
+          if-no-files-found: ignore
+
   arches:
     name: arch ${{ matrix.goarch }}
     runs-on: ubuntu-latest

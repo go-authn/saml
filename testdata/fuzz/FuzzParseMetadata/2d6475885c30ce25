@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<aaaaa0aaaaaaaaa aaaaaaa=\"\"A0aaaaaAaaaa=\"\"><aaAaaaaaaaa aaaaaaa=\"\"><aaAaaaaaAaaaaaAaaaaaaaaaaaaaaaAaaaaa Aaaaaaaaa=\"\" ><aaAaaaaaaaaAaaaaa Aaaaaaaaa=\"\"/><aaAaaaaaaaa AAA=\"\"><aa0Aaaaaaaaaa><aa0AAaaaaaaa Aaaaaaaaa=\"\"/><aa0Aaaaaaaaa Aaaaaaaaa=\"\"/></aa0AAaaaaaaaa><aa0AaaaaaAaaaaa Aaaaaaaaa=\"\"/><aa0AaaaaaAaaaa>0</Aa0AaaaaaAaaaa></aa0Aaaaaaaaa></Aa0AaaaaaAaaa><aa0AaaaaaaaaAaaaa>00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\x00")

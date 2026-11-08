@@ -1,0 +1,3 @@
+go test fuzz v1
+[]byte("<snY94xJytXwFWKqltVeDXgA/ncoMV82KJValue></xenc:CipherData></xenc:EncryptedData></saml:EncryptedAssertion>")
+bool(true)
