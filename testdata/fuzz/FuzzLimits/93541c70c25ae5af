@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<A xmlns=\"\"A=\"\"A=\"\"><A A=0")

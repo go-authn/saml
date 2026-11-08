@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<a aa=\"0\"aa=\"0\"aa=\"0\"aAa=\"0\"aAA=\"0\"aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0\" aAa=\"0\" aAA=\"0000000\"0 ")

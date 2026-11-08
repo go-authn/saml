@@ -88,6 +88,11 @@ enforced the dates would refuse a working IdP; this one does not look at them.
 - The refusals were **sabotage-checked**: removing the scope filter, the CBC
   gate, the audience check, the single-assertion rule, the SHA-1 refusal and
   the replay cache each turns a test red.
+- **Fuzzed**: `FuzzAccept`, `FuzzParseMetadata`, `FuzzDecrypt` and `FuzzLimits`
+  hold one property each (what is accepted says exactly what was signed or
+  sealed), seeded by `samltest` and the XSW1-8 layouts. The corpus is in
+  `testdata/fuzz` and replays in `go test`; CI mutates each target for 30 s.
+  Grow it with `go test -run '^$' -fuzz '^FuzzAccept$' .`.
 - One rule could **not** be given a witness: reading the verified element
   rather than the arriving document. Every difference between the two is
   either caught by the digest or normalised by etree the same way
