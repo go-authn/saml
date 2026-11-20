@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.0
+
+- Added to `samltest.Assertion` (#28), for an SP's tests that until now had to
+  build these responses with xmlsec1. A zero value writes what v0.6.1 wrote.
+  - `Status`: the StatusCode and its nested codes (`Responder` then
+    `NoPassive`, for a refused passive login). A Response whose top-level code
+    is not Success carries no assertion, encrypted or not.
+  - `Subject`: the Subject's NameID in full (`samltest.NameID`: value, format,
+    NameQualifier, SPNameQualifier), in place of the transient `NameID`
+    string; setting both is refused.
+  - `AuthnInstant`: when the IdP says the person authenticated, apart from
+    `Now`, so the authentication moves without moving the validity window.
+- Added: `samltest.Attribute.NameIDs`, values that are a `saml:NameID`
+  element (eduPersonTargetedID as a Shibboleth IdP releases it).
+- Each shape is read back by this module's SP, and verified and decrypted by
+  xmlsec1 (`TestResponseOptions`, `TestJudgedByXMLSec1`). Without xmlsec1, a
+  planted fault (a refusal that keeps its assertion) still turns
+  `TestResponseOptions` red.
+
 ## v0.6.1
 
 - Added: fuzz targets next to the parser (#21). `FuzzAccept` (a response the
