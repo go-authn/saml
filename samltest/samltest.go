@@ -191,6 +191,21 @@ func (f *Federation) Metadata(validFor time.Duration) ([]byte, error) {
 type Attribute struct {
 	Name   string
 	Values []string
+	// NameIDs are values that are a saml:NameID element, each in its own
+	// AttributeValue after Values: eduPersonTargetedID as a Shibboleth IdP
+	// releases it.
+	NameIDs []NameID
+}
+
+// NameID is a saml:NameID element. This package does not import saml (whose
+// own tests import this one), so it is not saml.NameID, but it has the same
+// fields.
+type NameID struct {
+	Value string
+	// Format is nameid-format:transient when empty.
+	Format string
+	// NameQualifier and SPNameQualifier are written when set.
+	NameQualifier, SPNameQualifier string
 }
 
 // Assertion is what the IdP says, and to whom.
@@ -201,7 +216,10 @@ type Assertion struct {
 	// response goes (Destination and Recipient).
 	SP, ACS string
 	// NameID is a transient NameID when empty.
-	NameID     string
+	NameID string
+	// Subject, when set, is the Subject's NameID in full, in place of NameID
+	// (setting both is refused).
+	Subject    *NameID
 	Attributes []Attribute
 	// AuthnContext is PasswordProtectedTransport when empty.
 	AuthnContext string
@@ -209,9 +227,39 @@ type Assertion struct {
 	// valid for Lifetime after it (five minutes when zero).
 	Now      time.Time
 	Lifetime time.Duration
+	// AuthnInstant is when the IdP says the person authenticated; when zero,
+	// the assertion's IssueInstant. Set apart from Now, it moves the
+	// authentication without moving the validity window.
+	AuthnInstant time.Time
+	// Status is the Response's StatusCode, then each nested StatusCode in
+	// order (status:Responder, status:NoPassive). Empty is status:Success.
+	// A Response whose top-level code is not Success carries no assertion.
+	Status []string
 	// EncryptTo is the SP's certificate. Nil sends the assertion in the
 	// clear, signed itself.
 	EncryptTo *x509.Certificate
+}
+
+const (
+	statusSuccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
+	transient     = "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+)
+
+// write puts n as a saml:NameID child of parent.
+func (n NameID) write(parent *etree.Element) {
+	e := parent.CreateElement("saml:NameID")
+	f := n.Format
+	if f == "" {
+		f = transient
+	}
+	e.CreateAttr("Format", f)
+	if n.NameQualifier != "" {
+		e.CreateAttr("NameQualifier", n.NameQualifier)
+	}
+	if n.SPNameQualifier != "" {
+		e.CreateAttr("SPNameQualifier", n.SPNameQualifier)
+	}
+	e.SetText(n.Value)
 }
 
 // Response is the IdP's signed Response, base64 as the SAMLResponse form
@@ -227,11 +275,30 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 	if a.AuthnContext == "" {
 		a.AuthnContext = ppt
 	}
-	if a.NameID == "" {
-		a.NameID = newID("t")
+	subject := NameID{Value: a.NameID}
+	switch {
+	case a.Subject != nil && a.NameID != "":
+		return "", errors.New("samltest: Assertion.NameID and Assertion.Subject are both set")
+	case a.Subject != nil:
+		subject = *a.Subject
+	case a.NameID == "":
+		subject.Value = newID("t")
 	}
 	ts := now.Add(-time.Second).UTC().Format(time.RFC3339)
 	later := now.Add(a.Lifetime).UTC().Format(time.RFC3339)
+	authnAt := ts
+	if !a.AuthnInstant.IsZero() {
+		authnAt = a.AuthnInstant.UTC().Format(time.RFC3339)
+	}
+	status := a.Status
+	if len(status) == 0 {
+		status = []string{statusSuccess}
+	}
+	for _, c := range status {
+		if c == "" {
+			return "", errors.New("samltest: an empty StatusCode in Assertion.Status")
+		}
+	}
 
 	adoc := etree.NewDocument()
 	as := adoc.CreateElement("saml:Assertion")
@@ -241,9 +308,7 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 	as.CreateAttr("IssueInstant", ts)
 	as.CreateElement("saml:Issuer").SetText(idp.EntityID)
 	subj := as.CreateElement("saml:Subject")
-	n := subj.CreateElement("saml:NameID")
-	n.CreateAttr("Format", "urn:oasis:names:tc:SAML:2.0:nameid-format:transient")
-	n.SetText(a.NameID)
+	subject.write(subj)
 	sc := subj.CreateElement("saml:SubjectConfirmation")
 	sc.CreateAttr("Method", "urn:oasis:names:tc:SAML:2.0:cm:bearer")
 	scd := sc.CreateElement("saml:SubjectConfirmationData")
@@ -255,7 +320,7 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 	cond.CreateAttr("NotOnOrAfter", later)
 	cond.CreateElement("saml:AudienceRestriction").CreateElement("saml:Audience").SetText(a.SP)
 	st := as.CreateElement("saml:AuthnStatement")
-	st.CreateAttr("AuthnInstant", ts)
+	st.CreateAttr("AuthnInstant", authnAt)
 	st.CreateAttr("SessionIndex", newID("_s"))
 	st.CreateElement("saml:AuthnContext").CreateElement("saml:AuthnContextClassRef").SetText(a.AuthnContext)
 	if len(a.Attributes) > 0 {
@@ -266,6 +331,9 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 			e.CreateAttr("NameFormat", "urn:oasis:names:tc:SAML:2.0:attrname-format:uri")
 			for _, v := range at.Values {
 				e.CreateElement("saml:AttributeValue").SetText(v)
+			}
+			for _, n := range at.NameIDs {
+				n.write(e.CreateElement("saml:AttributeValue"))
 			}
 		}
 	}
@@ -280,9 +348,16 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 	resp.CreateAttr("Destination", a.ACS)
 	resp.CreateAttr("InResponseTo", a.InResponseTo)
 	resp.CreateElement("saml:Issuer").SetText(idp.EntityID)
-	resp.CreateElement("samlp:Status").CreateElement("samlp:StatusCode").CreateAttr("Value", "urn:oasis:names:tc:SAML:2.0:status:Success")
+	code := resp.CreateElement("samlp:Status")
+	for _, c := range status {
+		code = code.CreateElement("samlp:StatusCode")
+		code.CreateAttr("Value", c)
+	}
 
-	if a.EncryptTo != nil {
+	switch {
+	case status[0] != statusSuccess:
+		// A refusal: the IdP has nothing to assert.
+	case a.EncryptTo != nil:
 		plain, err := adoc.WriteToBytes()
 		if err != nil {
 			return "", err
@@ -292,7 +367,7 @@ func (idp *IdP) Response(a Assertion) (string, error) {
 			return "", err
 		}
 		resp.AddChild(ea)
-	} else {
+	default:
 		// In the clear the assertion carries its own signature.
 		if err := sign(as, idp.Signer, as.SelectElement("Issuer")); err != nil {
 			return "", err

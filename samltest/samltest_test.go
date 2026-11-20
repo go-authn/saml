@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"errors"
 	"html"
 	"io"
 	"math/big"
@@ -131,6 +132,99 @@ func TestAcceptedByThisModule(t *testing.T) {
 		// Replayed: refused, so the helper's IDs are fresh and used once.
 		if _, err := w.sp.Accept(resp, p); err == nil {
 			t.Errorf("encrypted=%v: the same response accepted twice", enc)
+		}
+	}
+}
+
+// The options of go-authn/saml#28, each read back by this module's SP: what
+// the helper wrote is what a service provider receives.
+func TestResponseOptions(t *testing.T) {
+	const opaque = "Zm9vYmFy"
+	authnAt := time.Now().Add(-time.Hour).Truncate(time.Second)
+	for _, enc := range []bool{true, false} {
+		w := newWorld(t)
+		respond := func(a samltest.Assertion) (*saml.Assertion, error) {
+			t.Helper()
+			req, p := w.request(t)
+			a.InResponseTo, _ = samltest.RequestID(req)
+			a.SP, a.ACS = spEntity, acs
+			if enc {
+				a.EncryptTo = w.spKey.Cert
+			}
+			resp, err := w.idp.Response(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return w.sp.Accept(resp, p)
+		}
+
+		// A passive login the IdP refused: a StatusError, not an attack.
+		_, err := respond(samltest.Assertion{Status: []string{"urn:oasis:names:tc:SAML:2.0:status:Responder", "urn:oasis:names:tc:SAML:2.0:status:NoPassive"}})
+		var se *saml.StatusError
+		if !errors.As(err, &se) || !se.NoPassive() || se.Code != "urn:oasis:names:tc:SAML:2.0:status:Responder" {
+			t.Errorf("encrypted=%v: NoPassive answered %v", enc, err)
+		}
+
+		// A persistent, qualified Subject; an ePTID given as a NameID; an
+		// AuthnInstant an hour before an assertion that is valid now.
+		persistent := "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+		got, err := respond(samltest.Assertion{
+			Subject:      &samltest.NameID{Value: opaque, Format: persistent, SPNameQualifier: spEntity},
+			Attributes:   append(slices.Clone(attrs), samltest.Attribute{Name: saml.EduPersonTargetedID, NameIDs: []samltest.NameID{{Value: opaque, Format: persistent, NameQualifier: idpEntity, SPNameQualifier: spEntity}}}),
+			AuthnInstant: authnAt,
+		})
+		if err != nil {
+			t.Fatalf("encrypted=%v: refused: %v", enc, err)
+		}
+		check(t, got)
+		// No NameQualifier was written: the SP names the IdP that signed
+		// (go-authn/saml#12).
+		if want := (saml.NameID{Format: persistent, NameQualifier: idpEntity, SPNameQualifier: spEntity, Value: opaque}); got.NameID != want {
+			t.Errorf("encrypted=%v: NameID %+v, want %+v", enc, got.NameID, want)
+		}
+		if v, want := got.Attributes[saml.EduPersonTargetedID], []string{idpEntity + "!" + spEntity + "!" + opaque}; !slices.Equal(v, want) {
+			t.Errorf("encrypted=%v: eduPersonTargetedID %q, want %q", enc, v, want)
+		}
+		if !got.AuthnInstant.Equal(authnAt) {
+			t.Errorf("encrypted=%v: AuthnInstant %v, want %v", enc, got.AuthnInstant, authnAt)
+		}
+	}
+
+	// A refusal carries no assertion, in the clear or not: the SP's
+	// StatusError above would not tell (it reads the status first).
+	w := newWorld(t)
+	for _, to := range []*x509.Certificate{nil, w.spKey.Cert} {
+		r, err := w.idp.Response(samltest.Assertion{InResponseTo: "_req", SP: spEntity, ACS: acs, Attributes: attrs, EncryptTo: to,
+			Status: []string{"urn:oasis:names:tc:SAML:2.0:status:Requester"}})
+		raw, _ := base64.StdEncoding.DecodeString(r)
+		if err != nil || strings.Contains(string(raw), "Assertion") || !strings.Contains(string(raw), `<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Requester"/>`) {
+			t.Errorf("a refusal (encrypted to %v): %v\n%s", to != nil, err, raw)
+		}
+	}
+
+	// Unset, AuthnInstant is the IssueInstant: the same second as Now, less one.
+	req, p := w.request(t)
+	id, _ := samltest.RequestID(req)
+	now := time.Now().Truncate(time.Second)
+	resp, err := w.idp.Response(samltest.Assertion{InResponseTo: id, SP: spEntity, ACS: acs, Attributes: attrs, Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := w.sp.Accept(resp, p)
+	if err != nil || !got.AuthnInstant.Equal(now.Add(-time.Second)) {
+		t.Errorf("default AuthnInstant: %v %v, want %v", err, got, now.Add(-time.Second))
+	}
+}
+
+// What the options cannot mean is refused rather than guessed.
+func TestResponseOptionsRefused(t *testing.T) {
+	w := newWorld(t)
+	for name, a := range map[string]samltest.Assertion{
+		"NameID and Subject":  {NameID: "x", Subject: &samltest.NameID{Value: "y"}},
+		"an empty StatusCode": {Status: []string{"urn:oasis:names:tc:SAML:2.0:status:Responder", ""}},
+	} {
+		if _, err := w.idp.Response(a); err == nil {
+			t.Errorf("%s: no error", name)
 		}
 	}
 }
@@ -333,4 +427,34 @@ func TestJudgedByXMLSec1(t *testing.T) {
 	raw, _ = base64.StdEncoding.DecodeString(clear)
 	os.WriteFile(rf, raw, 0o644)
 	run("--verify", "--pubkey-cert-pem", idpCert, "--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:protocol:Response", rf)
+
+	// go-authn/saml#28's shapes: a refusal, signed and with no assertion; and
+	// a NameID subject, an ePTID NameID and an AuthnInstant of its own,
+	// decrypted by xmlsec1 as written.
+	refusal, _ := w.idp.Response(samltest.Assertion{InResponseTo: "_req", SP: spEntity, ACS: acs,
+		Status: []string{"urn:oasis:names:tc:SAML:2.0:status:Responder", "urn:oasis:names:tc:SAML:2.0:status:NoPassive"}})
+	raw, _ = base64.StdEncoding.DecodeString(refusal)
+	os.WriteFile(rf, raw, 0o644)
+	run("--verify", "--pubkey-cert-pem", idpCert, "--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:protocol:Response", rf)
+	if !strings.Contains(string(raw), `<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Responder"><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:NoPassive"/></samlp:StatusCode>`) || strings.Contains(string(raw), "Assertion") {
+		t.Errorf("the refusal is not a nested status alone:\n%s", raw)
+	}
+	persistent := "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+	shaped, _ := w.idp.Response(samltest.Assertion{InResponseTo: "_req", SP: spEntity, ACS: acs, EncryptTo: w.spKey.Cert,
+		Subject:      &samltest.NameID{Value: "opaque-1", Format: persistent, SPNameQualifier: spEntity},
+		Attributes:   []samltest.Attribute{{Name: samltest.EPPN, NameIDs: []samltest.NameID{{Value: "opaque-2", NameQualifier: idpEntity}}}},
+		AuthnInstant: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
+	raw, _ = base64.StdEncoding.DecodeString(shaped)
+	os.WriteFile(rf, raw, 0o644)
+	run("--verify", "--pubkey-cert-pem", idpCert, "--id-attr:ID", "urn:oasis:names:tc:SAML:2.0:protocol:Response", rf)
+	plain = run("--decrypt", "--privkey-pem", spKey, rf)
+	for _, want := range []string{
+		`<saml:NameID Format="` + persistent + `" SPNameQualifier="` + spEntity + `">opaque-1</saml:NameID>`,
+		`<saml:AttributeValue><saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:transient" NameQualifier="` + idpEntity + `">opaque-2</saml:NameID></saml:AttributeValue>`,
+		`AuthnInstant="2026-01-02T03:04:05Z"`,
+	} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("xmlsec1 decrypted no %s:\n%s", want, plain)
+		}
+	}
 }

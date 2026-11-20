@@ -145,13 +145,19 @@ srv.Config.Handler = idp.Handler(spEntityID, acsURL, spCert, func(user, pw strin
   exclusive c14n, enveloped, after the Issuer. The assertion is encrypted to
   the SP's certificate with AES-128-GCM and RSA-OAEP MGF1-SHA1 (a Shibboleth
   IdP v5's defaults), or signed itself in the clear when `EncryptTo` is nil.
+  An `Assertion` can also carry a `Status` other than Success (then the
+  Response has no assertion: `Responder` + `NoPassive` is a refused passive
+  login), a `Subject` NameID with its format and qualifiers, an
+  `AuthnInstant` of its own, and attribute values that are a NameID element
+  (`Attribute.NameIDs`, eduPersonTargetedID's form).
 - **The login**: `IdP.Handler` shows a username/password form for an
   AuthnRequest and answers with the form that posts `SAMLResponse` and
   `RelayState` to the ACS. A test's HTTP client submits it as a browser's
   script would.
 
 Its output is judged by parties that did not write it. **xmlsec1** verifies
-the metadata and both kinds of Response, and decrypts the assertion. This
+the metadata and both kinds of Response, a refusal, and decrypts the
+assertion, NameID subjects and NameID-valued attributes included. This
 package's **SP** accepts them, and refuses them tampered, replayed or
 signed by a key the federation does not list. The xmlsec1 test skips where
 xmlsec1 is absent, and says so; with `SAML_REQUIRE_JUDGE=1` it fails
