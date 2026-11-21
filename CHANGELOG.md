@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.1
+
+- Fixed: `Federation` treated any DNS name starting with `127.` as loopback
+  (`127.evil.example`), which let it fetch metadata over cleartext http and
+  follow an https to http redirect to such a host. Loopback is now `localhost`
+  or an IP literal that is loopback (`127.0.0.0/8`, `::1`).
+
 ## v0.7.0
 
 - Added to `samltest.Assertion` (#28), for an SP's tests that until now had to

@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -252,6 +252,13 @@ func localPath(u *url.URL) string {
 	return filepath.FromSlash(p)
 }
 
+// loopback reports whether host is this machine: the name "localhost", or an IP
+// literal in 127.0.0.0/8 or ::1. A DNS name that merely starts with "127." is
+// somebody else's (go-authn/oidc's loopbackHost does the same).
 func loopback(host string) bool {
-	return host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.")
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
