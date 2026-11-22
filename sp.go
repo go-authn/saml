@@ -592,11 +592,10 @@ func bearer(d *etree.Element, acs, requestID string, now time.Time, skew time.Du
 	if d.SelectAttrValue("InResponseTo", "") != requestID {
 		return time.Time{}, false, false
 	}
+	// An unreadable NotOnOrAfter leaves t zero, and ok false drops the
+	// confirmation: nothing about it is used.
 	t, err := instant(d.SelectAttrValue("NotOnOrAfter", ""))
-	if err != nil {
-		return time.Time{}, false, false
-	}
-	return t.Add(skew), now.Add(-skew).Before(t), true
+	return t.Add(skew), now.Add(-skew).Before(t), err == nil
 }
 
 func nameID(n *etree.Element) NameID {
