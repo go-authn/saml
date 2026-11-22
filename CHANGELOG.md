@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.7.2
+
+Two fixes from the 2026-11-21 security audit. Neither refuses anything a
+conforming IdP sends, hence a patch release: the only signature layout newly
+refused is one that no IdP produces (see below), and
+`TestASignatureOnBothTheResponseAndTheAssertionStaysAccepted` pins that a
+Response and its Assertion both signed with RSA-SHA256 (ADFS, Okta, Shibboleth
+by option) is still accepted.
+
+- Fixed: the signature-algorithm allow-list looked only at the direct
+  `ds:Signature` children of the Response or Assertion, while goxmldsig
+  verifies the first signature in document order, at any depth, that
+  references the element. A SHA-1 signature nested under `<Extensions>`, next
+  to an allow-listed decoy signature, passed the allow-list. A signature that
+  references the element being verified and is not its direct child is now
+  refused. A signature on the Assertion inside the Response references the
+  Assertion's ID, so it is not affected. Placing the decoy takes the signer
+  or a SHA-1 collision; this is not a bypass for an outsider.
+- Fixed: the replay-cache entry of a Response lasted until the first bearer
+  SubjectConfirmation's `NotOnOrAfter`, while the Response stays acceptable
+  until the latest confirmation that still holds. A second confirmation with a
+  later deadline let the same Response be delivered again after the entry was
+  evicted (saml-profiles 4.1.4.5). The entry now lasts as long as the Response
+  can be accepted, including the clock skew.
+
 ## v0.7.1
 
 - Fixed: `Federation` treated any DNS name starting with `127.` as loopback
