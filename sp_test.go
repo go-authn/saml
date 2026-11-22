@@ -386,9 +386,6 @@ func TestFederationRun(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not stop with its context")
 	}
-	if !loopback("127.0.0.1") || !loopback("::1") || !loopback("localhost") || loopback("example.org") {
-		t.Error("loopback")
-	}
 }
 
 func fileURL(p string) string {

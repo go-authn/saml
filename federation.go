@@ -9,13 +9,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/go-authn/harden/redirect"
 )
 
 // A Federation keeps a federation's metadata fresh: it fetches it, verifies
@@ -116,7 +117,7 @@ func (f *Federation) Refresh(ctx context.Context) error {
 			return err
 		}
 	case "https", "http":
-		if u.Scheme == "http" && !loopback(u.Hostname()) {
+		if u.Scheme == "http" && !redirect.Loopback(u.Hostname()) {
 			return fmt.Errorf("%s: metadata over cleartext http is refused", f.URL)
 		}
 		if data, etag, err = f.fetch(ctx); err != nil || data == nil {
@@ -169,7 +170,7 @@ func (f *Federation) fetch(ctx context.Context) ([]byte, string, error) {
 	f.mu.RUnlock()
 	c := f.Client
 	if c == nil {
-		c = &http.Client{Timeout: 2 * time.Minute, CheckRedirect: stayHTTPS}
+		c = &http.Client{Timeout: 2 * time.Minute, CheckRedirect: redirect.CheckRedirect}
 	}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -230,18 +231,6 @@ func (f *Federation) Run(ctx context.Context, errs func(error)) {
 	}
 }
 
-// stayHTTPS refuses a redirect that leaves https, which Go's client follows
-// by default.
-func stayHTTPS(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	if req.URL.Scheme != "https" && !loopback(req.URL.Hostname()) {
-		return fmt.Errorf("a redirect to %s leaves https", req.URL.Redacted())
-	}
-	return nil
-}
-
 // localPath is a file:/// URL's path on this system: file:///C:/x is C:\x on
 // Windows, whose paths do not start at a slash.
 func localPath(u *url.URL) string {
@@ -250,15 +239,4 @@ func localPath(u *url.URL) string {
 		p = p[1:]
 	}
 	return filepath.FromSlash(p)
-}
-
-// loopback reports whether host is this machine: the name "localhost", or an IP
-// literal in 127.0.0.0/8 or ::1. A DNS name that merely starts with "127." is
-// somebody else's (go-authn/oidc's loopbackHost does the same).
-func loopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip, err := netip.ParseAddr(host)
-	return err == nil && ip.IsLoopback()
 }

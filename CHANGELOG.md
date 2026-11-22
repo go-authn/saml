@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.3
+
+- The loopback rule and the redirect policy of `Federation` come from
+  `github.com/go-authn/harden/redirect`, shared with oidc, rp, awscred and
+  wireguard. Loopback now also means `*.localhost`, in any letter case and with
+  a trailing dot; an IPv6 zone such as `::1%eth0` is no longer loopback; the
+  redirect error names the scheme and host only.
+
 ## v0.7.2
 
 Two fixes from the 2026-11-21 security audit. Neither refuses anything a
