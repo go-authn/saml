@@ -389,7 +389,14 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 			out.NameID.NameQualifier = idp.EntityID
 		}
 	}
+	// ⛔ The replay entry has to last as long as ANY confirmation could still
+	// admit the response, not the first one that admits it now: with two
+	// bearer confirmations (NotOnOrAfter T1 < T2) an entry kept until T1 is
+	// gone while the second still holds, and the response is delivered again
+	// (saml-profiles 4.1.4.5: the ID is kept "for the length of time for
+	// which the assertion would be considered valid"; security audit).
 	var expires time.Time
+	confirmed := false
 	for _, sc := range children(subj, nsAssertion, "SubjectConfirmation") {
 		if sc.SelectAttrValue("Method", "") != cmBearer {
 			continue
@@ -398,12 +405,16 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 		if err != nil {
 			continue
 		}
-		if e, ok := bearer(d, sp.ACS, p.ID, now, skew); ok {
-			expires = e
-			break
+		until, live, ok := bearer(d, sp.ACS, p.ID, now, skew)
+		if !ok {
+			continue
 		}
+		if until.After(expires) {
+			expires = until
+		}
+		confirmed = confirmed || live
 	}
-	if expires.IsZero() {
+	if !confirmed {
 		return nil, errors.New("no bearer confirmation is for this ACS, this request, and now")
 	}
 
@@ -430,6 +441,11 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 			return nil, errors.New("the assertion has expired")
 		}
 		out.NotOnOrAfter = t
+		// The assertion cannot be delivered after its own conditions end, so
+		// that bounds how long its ID has to be remembered.
+		if end := t.Add(skew); end.Before(expires) {
+			expires = end
+		}
 	}
 	audienced := false
 	for _, c := range cond.ChildElements() {
@@ -560,25 +576,26 @@ func (sp *SP) assertion(a *etree.Element, idp *IdP, p Pending, now time.Time) (*
 }
 
 // bearer checks one bearer SubjectConfirmationData (saml-profiles 4.1.4.2
-// and 4.1.4.3), returning how long the assertion may be delivered for.
-func bearer(d *etree.Element, acs, requestID string, now time.Time, skew time.Duration) (time.Time, bool) {
+// and 4.1.4.3). ok says it is for this ACS and this request; until is the last
+// instant it could admit the response (NotOnOrAfter plus the skew), and live
+// whether it admits it at now.
+func bearer(d *etree.Element, acs, requestID string, now time.Time, skew time.Duration) (until time.Time, live, ok bool) {
 	if d.SelectAttrValue("Recipient", "") != acs {
-		return time.Time{}, false
+		return time.Time{}, false, false
 	}
 	// "It MUST NOT contain a NotBefore attribute."
 	if d.SelectAttrValue("NotBefore", "") != "" {
-		return time.Time{}, false
+		return time.Time{}, false, false
 	}
 	// Unsolicited responses are not accepted: InResponseTo must be the
 	// request this SP sent.
 	if d.SelectAttrValue("InResponseTo", "") != requestID {
-		return time.Time{}, false
+		return time.Time{}, false, false
 	}
+	// An unreadable NotOnOrAfter leaves t zero, and ok false drops the
+	// confirmation: nothing about it is used.
 	t, err := instant(d.SelectAttrValue("NotOnOrAfter", ""))
-	if err != nil || !now.Add(-skew).Before(t) {
-		return time.Time{}, false
-	}
-	return t.Add(skew), true
+	return t.Add(skew), now.Add(-skew).Before(t), err == nil
 }
 
 func nameID(n *etree.Element) NameID {

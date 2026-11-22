@@ -153,6 +153,11 @@ type assertion struct {
 	AuthnContext                                  string
 	Attributes                                    map[string][]string
 	Extra                                         string // raw XML appended to Conditions
+	// ConfirmUntil is the NotOnOrAfter of the bearer confirmation, when it is
+	// not the assertion's (zero: the same). MoreConfirmations is raw XML
+	// appended inside Subject, after it.
+	ConfirmUntil      time.Time
+	MoreConfirmations string
 }
 
 func defaultAssertion() assertion {
@@ -197,14 +202,18 @@ func (a assertion) xml(signed bool) string {
 		sig = fmt.Sprintf(sigTemplate, rsaSHA256, a.ID, dSHA256)
 	}
 	ts := judgeNow.Add(-time.Second).Format(time.RFC3339)
+	confirmUntil := a.NotOnOrAfter
+	if !a.ConfirmUntil.IsZero() {
+		confirmUntil = a.ConfirmUntil
+	}
 	return fmt.Sprintf(`<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="%s" Version="2.0" IssueInstant="%s">`+
 		`<saml:Issuer>%s</saml:Issuer>%s`+
 		`<saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:transient">AAdzZWNyZXQx</saml:NameID>`+
-		`<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData Recipient="%s" InResponseTo="%s" NotOnOrAfter="%s"/></saml:SubjectConfirmation></saml:Subject>`+
+		`<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData Recipient="%s" InResponseTo="%s" NotOnOrAfter="%s"/></saml:SubjectConfirmation>%s</saml:Subject>`+
 		`<saml:Conditions NotBefore="%s" NotOnOrAfter="%s"><saml:AudienceRestriction><saml:Audience>%s</saml:Audience></saml:AudienceRestriction>%s</saml:Conditions>`+
 		`<saml:AuthnStatement AuthnInstant="%s" SessionIndex="_s1"><saml:AuthnContext><saml:AuthnContextClassRef>%s</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>`+
 		`<saml:AttributeStatement>%s</saml:AttributeStatement></saml:Assertion>`,
-		a.ID, ts, a.Issuer, sig, a.Recipient, a.InResponseTo, a.NotOnOrAfter.Format(time.RFC3339),
+		a.ID, ts, a.Issuer, sig, a.Recipient, a.InResponseTo, confirmUntil.Format(time.RFC3339), a.MoreConfirmations,
 		ts, a.NotOnOrAfter.Format(time.RFC3339), a.Audience, a.Extra, ts, a.AuthnContext, attrs.String())
 }
 

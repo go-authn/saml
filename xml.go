@@ -227,6 +227,14 @@ func verify(el *etree.Element, keys []*x509.Certificate) (*etree.Element, error)
 	if sigs != 1 {
 		return nil, fmt.Errorf("<%s> carries %d signatures, where exactly one is required", el.Tag, sigs)
 	}
+	// ⛔ goxmldsig does not take the direct child: findSignature walks every
+	// descendant and verifies the first signature, in document order, that
+	// references the element. A signature nested anywhere else that does so
+	// is the one that would be verified, and its algorithms were never
+	// looked at (a SHA-1 one beside an allow-listed decoy).
+	if nested := nestedSignatureOf(el, id); nested != nil {
+		return nil, fmt.Errorf("<%s> has a signature nested below a child that references it, where only a direct child is accepted", el.Tag)
+	}
 	var last error
 	for _, k := range keys {
 		ctx := dsig.NewDefaultValidationContext(&dsig.MemoryX509CertificateStore{Roots: []*x509.Certificate{k}})
@@ -244,6 +252,38 @@ func verify(el *etree.Element, keys []*x509.Certificate) (*etree.Element, error)
 		last = err
 	}
 	return nil, fmt.Errorf("the signature does not verify with any key the signer published: %w", last)
+}
+
+// nestedSignatureOf finds a ds:Signature below a child of el (not a direct
+// child) with a Reference that goxmldsig would take for el: an empty URI, or
+// one whose text after its first character is el's ID.
+func nestedSignatureOf(el *etree.Element, id string) *etree.Element {
+	var walk func(parent *etree.Element, depth int) *etree.Element
+	walk = func(parent *etree.Element, depth int) *etree.Element {
+		for _, c := range parent.ChildElements() {
+			if depth > 0 && is(c, nsDSig, "Signature") && referencesID(c, id) {
+				return c
+			}
+			if f := walk(c, depth+1); f != nil {
+				return f
+			}
+		}
+		return nil
+	}
+	return walk(el, 0)
+}
+
+// referencesID mirrors goxmldsig's test of a signature's references.
+func referencesID(sig *etree.Element, id string) bool {
+	for _, si := range children(sig, nsDSig, "SignedInfo") {
+		for _, ref := range children(si, nsDSig, "Reference") {
+			uri := ref.SelectAttrValue("URI", "")
+			if uri == "" || uri[1:] == id {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // algorithms refuses a signature whose algorithms are not on the allowlist,
