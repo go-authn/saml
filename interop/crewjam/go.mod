@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/go-authn/harden v0.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect

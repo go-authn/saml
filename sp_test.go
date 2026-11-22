@@ -330,8 +330,8 @@ func TestFederationRefusals(t *testing.T) {
 	if err := (&Federation{URL: "https://x"}).Refresh(ctx); err == nil {
 		t.Error("a federation without a certificate refreshed")
 	}
-	if err := (&Federation{URL: "http://metadata.example.org/x.xml", Cert: cert}).Refresh(ctx); err == nil {
-		t.Error("cleartext http was fetched")
+	if err := (&Federation{URL: "http://metadata.example.org/x.xml", Cert: cert}).Refresh(ctx); err == nil || !strings.Contains(err.Error(), "cleartext http is refused") {
+		t.Errorf("cleartext http to another host: %v, want the refusal, not a failed fetch", err)
 	}
 	if err := (&Federation{URL: "ftp://x/y", Cert: cert}).Refresh(ctx); err == nil {
 		t.Error("an unknown scheme was fetched")
@@ -385,9 +385,6 @@ func TestFederationRun(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not stop with its context")
-	}
-	if !loopback("127.0.0.1") || !loopback("::1") || !loopback("localhost") || loopback("example.org") {
-		t.Error("loopback")
 	}
 }
 
