@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/beevik/etree v1.8.1
-	github.com/go-authn/harden v0.1.0
+	github.com/go-authn/harden v0.3.0
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/russellhaering/goxmldsig v1.6.1
 )

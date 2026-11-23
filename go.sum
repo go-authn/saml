@@ -3,8 +3,8 @@ github.com/beevik/etree v1.8.1/go.mod h1:bh4zJxiIr62SOf9pRzN7UUYaEDa9HEKafK25+sL
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/go-authn/harden v0.1.0 h1:8ocSIjHGzMhSaWh2g2QCZroo9eC7i+1gyWmBgaDvCpw=
-github.com/go-authn/harden v0.1.0/go.mod h1:whEYokEtB2OBsHeKVjZv9Za73BqiQSvpFhgO4QIn7XQ=
+github.com/go-authn/harden v0.3.0 h1:KripIm2WdN0gUfwuw7N16i93zDe59w59fhmo80eCMt4=
+github.com/go-authn/harden v0.3.0/go.mod h1:sceLxhnMHtExHEp9bU8XHKCw2fp+WFjh6Ri6Yxu2aVA=
 github.com/jonboulle/clockwork v0.5.0 h1:Hyh9A8u51kptdkR+cqRpT1EebBwTn1oK9YfGYbdFz6I=
 github.com/jonboulle/clockwork v0.5.0/go.mod h1:3mZlmanh0g2NDKO5TWZVJAfofYk64M7XN3SzBPjZF60=
 github.com/mattermost/xml-roundtrip-validator v0.1.0 h1:RXbVD2UAl7A7nOTR4u7E3ILa4IbtvKBHw64LDsmu9hU=
