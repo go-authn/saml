@@ -34,7 +34,7 @@ jobs:
       # prove only that the two halves agree with each other.
       - name: xmlsec1
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1 libxml2-utils
       - name: the judge is there
         if: matrix.os == 'ubuntu-latest'
         run: xmlsec1 --version
@@ -67,7 +67,7 @@ jobs:
       # is not a failure. SAML_REQUIRE_JUDGE turns that skip into a failure
       # wherever the judge is supposed to be there.
       - name: xmlsec1
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1 libxml2-utils
       - run: go test -race -count=1 ./...
         env:
           SAML_REQUIRE_JUDGE: "1"
@@ -84,7 +84,7 @@ jobs:
       # is not a failure. SAML_REQUIRE_JUDGE turns that skip into a failure
       # wherever the judge is supposed to be there.
       - name: xmlsec1
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xmlsec1 libxml2-utils
       - run: |
           export SAML_REQUIRE_JUDGE=1
           FLOOR=92.0

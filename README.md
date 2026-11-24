@@ -105,6 +105,13 @@ enforced the dates would refuse a working IdP; this one does not look at them.
   metadata the federation registers: the entity ID, the ACS, and the key,
   published without a `use` so it serves for signing and encryption, with GCM
   listed before CBC so an IdP that honours the list does not fall back.
+  Optional `Organization`, `Contacts` (with the REFEDS security-contact
+  marker), `Logos` (`mdui:Logo`) and per-language `InformationURLs` and
+  `PrivacyStatementURLs` complete what a registry asks; `Description.Validate`
+  refuses non-https URLs, a logo without width and height, an unknown contact
+  type, a malformed address and a language given twice. Left unset, the output
+  is byte for byte what it was, and it is checked against the OASIS metadata
+  and mdui schemas by xmllint.
 - **Discovery.** `saml.DiscoveryURL(service, entityID, returnURL)` sends the
   person to the federation's discovery service, and `saml.Chosen(query, fed)`
   reads the IdP it sends back, refusing one that is not in the federation: the
