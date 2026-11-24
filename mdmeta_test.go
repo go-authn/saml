@@ -271,6 +271,8 @@ func TestDescriptionRefusals(t *testing.T) {
 		"unknown contact type":         {mut(func(d *Description) { d.Contacts[0].Type = "security" }), "unknown contact type"},
 		"empty contact type":           {mut(func(d *Description) { d.Contacts[0].Type = "" }), "unknown contact type"},
 		"security contact not other":   {mut(func(d *Description) { d.Contacts[0].Security = true }), `of type "other"`},
+		"security contact no name":     {mut(func(d *Description) { d.Contacts[3].GivenName = "" }), "REFEDS"},
+		"security contact blank name":  {mut(func(d *Description) { d.Contacts[3].GivenName = " \t" }), "REFEDS"},
 		"email not an address":         {mut(func(d *Description) { d.Contacts[0].Email = "help" }), "bare address"},
 		"email blank":                  {mut(func(d *Description) { d.Contacts[0].Email = "  " }), "empty"},
 		"given name blank":             {mut(func(d *Description) { d.Contacts[0].GivenName = "  " }), "empty"},
