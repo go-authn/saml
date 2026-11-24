@@ -42,10 +42,11 @@ type Contact struct {
 
 	// Security marks the REFEDS security contact: the ContactPerson is of type
 	// "other" and carries remd:contactType="http://refeds.org/metadata/contactType/security".
-	// It requires Type "other".
+	// It requires Type "other" and a GivenName: the REFEDS Security Contact
+	// Metadata Extension makes GivenName and EmailAddress mandatory.
 	Security bool
 
-	GivenName string // optional
+	GivenName string // optional, except for a security contact
 	Email     string // a bare address; the metadata carries it as "mailto:<addr>"
 }
 
@@ -208,6 +209,9 @@ func (c Contact) validate() error {
 	}
 	if c.Security && c.Type != "other" {
 		return fmt.Errorf(`a security contact is of type "other", not %q`, c.Type)
+	}
+	if c.Security && strings.TrimSpace(c.GivenName) == "" {
+		return fmt.Errorf("a security contact needs a given name: the REFEDS Security Contact Metadata Extension makes GivenName and EmailAddress mandatory")
 	}
 	if c.GivenName != "" {
 		if err := plainText(c.GivenName); err != nil {
