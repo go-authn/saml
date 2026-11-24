@@ -3,6 +3,7 @@
 package saml
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -263,11 +264,34 @@ func TestDescriptionRefusals(t *testing.T) {
 		"unknown contact type":         {mut(func(d *Description) { d.Contacts[0].Type = "security" }), "unknown contact type"},
 		"empty contact type":           {mut(func(d *Description) { d.Contacts[0].Type = "" }), "unknown contact type"},
 		"security contact not other":   {mut(func(d *Description) { d.Contacts[0].Security = true }), `of type "other"`},
-		"email not an address":         {mut(func(d *Description) { d.Contacts[0].Email = "help" }), "email"},
-		"email with a name":            {mut(func(d *Description) { d.Contacts[0].Email = "Help <help@example.org>" }), "bare address"},
-		"email empty":                  {mut(func(d *Description) { d.Contacts[0].Email = "" }), "email"},
-		"email with mailto":            {mut(func(d *Description) { d.Contacts[0].Email = "mailto:help@example.org" }), "email"},
-		"given name control":           {mut(func(d *Description) { d.Contacts[0].GivenName = "a\nb" }), "control"},
+		"email not an address":         {mut(func(d *Description) { d.Contacts[0].Email = "help" }), "bare address"},
+		"email blank":                  {mut(func(d *Description) { d.Contacts[0].Email = "  " }), "empty"},
+		"given name blank":             {mut(func(d *Description) { d.Contacts[0].GivenName = "  " }), "empty"},
+		"given name too long":          {mut(func(d *Description) { d.Contacts[0].GivenName = strings.Repeat("a", maxMetadataText+1) }), "longer than"},
+		"organization name blank":      {mut(func(d *Description) { d.Organization.Names["en"] = "  " }), "empty"},
+		"logo URL empty":               {mut(func(d *Description) { d.Logos[0].URL = "" }), "empty"},
+		"logo URL invalid character":   {mut(func(d *Description) { d.Logos[0].URL = "https://bridge.example.org/�" }), "control or invalid"},
+		"logo URL with a space":        {mut(func(d *Description) { d.Logos[0].URL = "https://bridge.example.org/a b.png" }), "not a URL"},
+		"logo URL bad escape":          {mut(func(d *Description) { d.Logos[0].URL = "https://%zz" }), "invalid URL escape"},
+		"logo URL too long": {mut(func(d *Description) {
+			d.Logos[0].URL = "https://bridge.example.org/" + strings.Repeat("a", maxMetadataText)
+		}), "longer than"},
+		"too many logos": {mut(func(d *Description) {
+			for i := 1; len(d.Logos) <= maxMetadataItems; i++ {
+				l := d.Logos[0]
+				l.Width += i
+				d.Logos = append(d.Logos, l)
+			}
+		}), "at most"},
+		"too many languages": {mut(func(d *Description) {
+			for i := 0; len(d.InformationURLs) <= maxMetadataItems; i++ {
+				d.InformationURLs[fmt.Sprintf("x-%d", i)] = "https://bridge.example.org/"
+			}
+		}), "at most"},
+		"email with a name":  {mut(func(d *Description) { d.Contacts[0].Email = "Help <help@example.org>" }), "bare address"},
+		"email empty":        {mut(func(d *Description) { d.Contacts[0].Email = "" }), "email"},
+		"email with mailto":  {mut(func(d *Description) { d.Contacts[0].Email = "mailto:help@example.org" }), "email"},
+		"given name control": {mut(func(d *Description) { d.Contacts[0].GivenName = "a\nb" }), "control"},
 		"too many contacts": {mut(func(d *Description) {
 			for len(d.Contacts) <= maxMetadataItems {
 				d.Contacts = append(d.Contacts, d.Contacts[0])

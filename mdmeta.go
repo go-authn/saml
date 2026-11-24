@@ -21,7 +21,6 @@ const (
 	nsREFEDS         = "http://refeds.org/metadata"
 	refedsSecurity   = "http://refeds.org/metadata/contactType/security"
 	maxMetadataText  = 1024
-	maxMetadataURL   = 2048
 	maxMetadataItems = 32
 )
 
@@ -157,9 +156,6 @@ func langMap(what string, m map[string]string, isURL bool) error {
 }
 
 func langURLs(what string, m map[string]string) error {
-	if len(m) == 0 {
-		return nil
-	}
 	return langMap(what, m, true)
 }
 
@@ -185,7 +181,8 @@ func httpsURL(s string) error {
 	if err := plainText(s); err != nil {
 		return err
 	}
-	if len(s) > maxMetadataURL || strings.ContainsAny(s, " \t") {
+	// plainText already bounds the length (maxMetadataText).
+	if strings.ContainsAny(s, " \t") {
 		return errors.New("not a URL")
 	}
 	u, err := url.Parse(s)
@@ -220,12 +217,8 @@ func (c Contact) validate() error {
 	if err := plainText(c.Email); err != nil {
 		return fmt.Errorf("email: %w", err)
 	}
-	a, err := mail.ParseAddress(c.Email)
-	if err != nil {
-		return fmt.Errorf("email %q: %w", c.Email, err)
-	}
-	if a.Address != c.Email {
-		return fmt.Errorf("email %q is not a bare address (no display name, no brackets)", c.Email)
+	if a, err := mail.ParseAddress(c.Email); err != nil || a.Address != c.Email {
+		return fmt.Errorf("email %q is not a bare address (name@host, no display name, no brackets)", c.Email)
 	}
 	return nil
 }
