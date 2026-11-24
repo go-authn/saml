@@ -1,0 +1,3 @@
+# Golden files and vendored schemas are compared byte for byte: no line-ending
+# conversion on any platform.
+testdata/** -text

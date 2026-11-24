@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,6 +50,12 @@ func fullDescription() Description {
 // does for the signatures.
 func xmllint(t *testing.T) string {
 	t.Helper()
+	// The catalog maps remote schema locations to files by POSIX paths; on
+	// Windows and macOS runners xmllint either cannot read them or looks for
+	// the network, so the judge runs on Linux, where CI installs it.
+	if runtime.GOOS != "linux" {
+		t.Skip("the schema judge runs on Linux")
+	}
 	p, err := exec.LookPath("xmllint")
 	if err != nil {
 		if os.Getenv("SAML_REQUIRE_JUDGE") == "1" {
