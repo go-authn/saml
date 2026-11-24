@@ -34,6 +34,26 @@ type Description struct {
 	// Attributes are the attributes the SP asks for. RENATER wants each one
 	// justified at registration; the list here is what goes in the metadata.
 	Attributes []string
+
+	// The fields below are optional and, all unset, leave the metadata exactly
+	// as it was before they existed.
+
+	// Organization is <md:Organization>. RENATER and eduGAIN registries ask
+	// for it; saml-metadata-2.0-os 2.3.2.1 makes it optional.
+	Organization *Organization
+
+	// Contacts are <md:ContactPerson>s, written after Technical's. saml2int
+	// SDP-MD11 wants a technical one: Technical, or a Contact of that type.
+	Contacts []Contact
+
+	// Logos are <mdui:Logo>s, which saml2int SDP-MD09 wants in the UIInfo.
+	Logos []Logo
+
+	// InformationURLs and PrivacyStatementURLs are by language and add to
+	// InformationURL and PrivacyStatement, which are the "en" one: giving
+	// both an "en" entry and the single URL is refused.
+	InformationURLs      map[string]string
+	PrivacyStatementURLs map[string]string
 }
 
 // Metadata is the SP's own metadata, to register with the federation.
@@ -48,6 +68,9 @@ func (sp *SP) Metadata(d Description) ([]byte, error) {
 	if d.Names["fr"] == "" && d.Names["en"] == "" {
 		return nil, errors.New("an SP needs a display name")
 	}
+	if err := d.Validate(); err != nil {
+		return nil, err
+	}
 	doc := etree.NewDocument()
 	doc.CreateProcInst("xml", `version="1.0" encoding="UTF-8"`)
 	ed := doc.CreateElement("md:EntityDescriptor")
@@ -56,6 +79,9 @@ func (sp *SP) Metadata(d Description) ([]byte, error) {
 	ed.CreateAttr("xmlns:mdui", nsMDUI)
 	ed.CreateAttr("xmlns:idpdisc", nsIdPDisco)
 	ed.CreateAttr("xmlns:saml", nsAssertion)
+	if hasSecurity(d.Contacts) {
+		ed.CreateAttr("xmlns:remd", nsREFEDS)
+	}
 	ed.CreateAttr("entityID", sp.EntityID)
 
 	role := ed.CreateElement("md:SPSSODescriptor")
@@ -91,6 +117,17 @@ func (sp *SP) Metadata(d Description) ([]byte, error) {
 		n.CreateAttr("xml:lang", "en")
 		n.SetText(d.PrivacyStatement)
 	}
+	for _, l := range sorted(d.InformationURLs) {
+		n := ui.CreateElement("mdui:InformationURL")
+		n.CreateAttr("xml:lang", l)
+		n.SetText(d.InformationURLs[l])
+	}
+	for _, l := range sorted(d.PrivacyStatementURLs) {
+		n := ui.CreateElement("mdui:PrivacyStatementURL")
+		n.CreateAttr("xml:lang", l)
+		n.SetText(d.PrivacyStatementURLs[l])
+	}
+	addLogos(ui, d.Logos)
 
 	kd := role.CreateElement("md:KeyDescriptor")
 	kd.CreateElement("ds:KeyInfo").CreateElement("ds:X509Data").CreateElement("ds:X509Certificate").
@@ -125,10 +162,18 @@ func (sp *SP) Metadata(d Description) ([]byte, error) {
 		}
 	}
 
+	// In an EntityDescriptor the role descriptors come first, then
+	// Organization, then the ContactPersons (saml-metadata-2.0-os 2.3.2).
+	if d.Organization != nil {
+		addOrganization(ed, d.Organization)
+	}
 	if d.Technical != "" {
 		c := ed.CreateElement("md:ContactPerson")
 		c.CreateAttr("contactType", "technical")
 		c.CreateElement("md:EmailAddress").SetText("mailto:" + d.Technical)
+	}
+	for _, c := range d.Contacts {
+		addContact(ed, c)
 	}
 	doc.Indent(2)
 	return doc.WriteToBytes()
